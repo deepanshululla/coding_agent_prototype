@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from agent import run_agent  # noqa: E402
+from sdk import run_agent_collecting  # noqa: E402
 
 load_dotenv()
 app = FastAPI(title="Coding Agent HTTP API")
@@ -54,26 +55,24 @@ async def handle_run(req: RunRequest) -> dict:
 
 @app.post("/run_agent/stream")
 async def handle_stream(req: RunRequest) -> StreamingResponse:
-    """Stream NDJSON events as the agent runs.
+    """Stream every typed agent event as NDJSON, one JSON object per line.
 
-    Stub for Layer 14.2: run synchronously and emit a single summary event. The
-    JSON Event Stream layer (14.3) replaces this with a per-event generator
-    driven off the emit() seam.
+    Layer 14.3 wires this to the emit() seam via ``run_agent_collecting``: the
+    agent runs to completion, every event it emitted (text_delta,
+    tool_call_start/end, turn_end, agent_end, ...) is collected, and each is
+    yielded as ``json.dumps(event) + "\\n"`` so an NDJSON client (or `jq`) sees
+    the full ordered event stream.
+
+    This is collect-then-flush, not true real-time streaming:
+    ``run_agent_collecting`` waits for the agent to finish before any line is
+    yielded. True per-event streaming needs an ``asyncio.Queue`` wired into the
+    emit seam — deferred to Phase 15 (steering), where the queue becomes
+    structurally necessary.
     """
 
     async def event_lines():
-        messages = await run_agent(req.task, model=req.model)
-        yield (
-            json.dumps(
-                {
-                    "type": "agent_end",
-                    "total_iterations": sum(
-                        1 for m in messages if m.get("role") == "assistant"
-                    ),
-                    "status": "ok",
-                }
-            )
-            + "\n"
-        )
+        events, _messages = await run_agent_collecting(req.task, model=req.model)
+        for event in events:
+            yield json.dumps(event) + "\n"
 
     return StreamingResponse(event_lines(), media_type="application/x-ndjson")
