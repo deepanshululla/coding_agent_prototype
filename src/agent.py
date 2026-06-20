@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from allowlist import check_command
+from policy import PolicyEngine
 from prompts import build_system_prompt
 from provider import stream_response
 from renderer import emit
@@ -11,6 +11,25 @@ from tools import TOOL_REGISTRY
 from types_ import ToolResult
 
 MAX_ITERATIONS = 30
+
+_policy = PolicyEngine.from_env()   # reads AGENT_PERMISSION_MODE once at startup
+_prompt_lock = asyncio.Lock()       # serialise stdin prompts in ask mode
+
+
+async def _prompt_user(name: str, args: dict) -> bool:
+    """Display a permission request and wait for the user's answer.
+
+    Serialised with _prompt_lock so parallel tool calls don't interleave their
+    input() prompts on the terminal.
+    """
+    async with _prompt_lock:
+        print(f"\n[PERMISSION REQUEST] Tool: {name}")
+        for key, value in args.items():
+            text = str(value)
+            preview = text[:200] + ("..." if len(text) > 200 else "")
+            print(f"  {key}: {preview}")
+        response = await asyncio.to_thread(input, "Allow? [y/N] ")
+        return response.strip().lower() == "y"
 
 
 async def run_agent(
@@ -162,29 +181,43 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
     name = tool_call["name"]
     args = tool_call["input"]
 
-    # ── Command allowlist gate (bash only) ────────────────────────────────
-    # Default-deny: only explicitly permitted programs may run via bash.
-    # Sits at the beforeToolCall position — after the call is parsed, before
-    # the tool function is dispatched. A denial returns is_error=True so the
-    # model reads the reason and adapts rather than crashing.
-    if name == "bash":
-        verdict = check_command(args.get("command", ""))
-        if not verdict.allowed:
-            emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-                  "tool_call_id": tool_call["id"], "name": name,
-                  "content": f"Error: {verdict.reason}", "is_error": True, "chars": 0})
-            return ToolResult(
-                tool_call["id"], name, f"Error: {verdict.reason}", is_error=True
-            )
-    # ─────────────────────────────────────────────────────────────────────
-
-    # tool_call_start was already emitted during streaming; no event here.
+    # ── Unknown-tool check (before the policy gate) ───────────────────────
+    # An unknown tool can never be dispatched, so there is nothing to gate or
+    # prompt for — short-circuit to the error so the model can correct itself.
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
         emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
               "tool_call_id": tool_call["id"], "name": name,
               "content": f"Unknown tool: {name}", "is_error": True, "chars": 0})
         return ToolResult(tool_call["id"], name, f"Unknown tool: {name}", is_error=True)
+
+    # ── Policy gate ───────────────────────────────────────────────────────
+    # The PolicyEngine (selected by AGENT_PERMISSION_MODE) evaluates the call
+    # before dispatch. It subsumes the Layer 12.2 allowlist gate (now inside
+    # CommandAllowlistRule) and adds read-only / ask / auto postures. A deny or
+    # an unapproved ask returns is_error=True so the model reads the reason and
+    # adapts rather than crashing.
+    decision = _policy.check(name, args)
+
+    if decision.outcome == "deny":
+        reason = f"Error: tool call denied — {decision.reason}"
+        emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+              "tool_call_id": tool_call["id"], "name": name,
+              "content": reason, "is_error": True, "chars": 0})
+        return ToolResult(tool_call["id"], name, reason, is_error=True)
+
+    if decision.outcome == "ask":
+        approved = await _prompt_user(name, args)
+        if not approved:
+            reason = f"Tool call '{name}' was not approved."
+            emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+                  "tool_call_id": tool_call["id"], "name": name,
+                  "content": reason, "is_error": True, "chars": 0})
+            return ToolResult(tool_call["id"], name, reason, is_error=True)
+    # outcome == "allow" — fall through to dispatch
+    # ─────────────────────────────────────────────────────────────────────
+
+    # tool_call_start was already emitted during streaming; no event here.
     try:
         result = await fn(**args)
     except Exception as e:

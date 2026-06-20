@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-12-3-permissions-and-modes
 
 # Phase 12.3 — Permissions & Modes
 
