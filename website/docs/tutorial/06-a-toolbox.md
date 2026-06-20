@@ -6,6 +6,10 @@ description: Grow from one tool to seven behind a registry, and learn the cardin
 
 # Phase 6 — A Toolbox
 
+:::note Implemented
+This step is implemented on branch `step/phase-06-a-toolbox` (plan: `plans/tutorial/phase-06-a-toolbox.md`).
+:::
+
 :::note Starting point
 Phase 5's loop, which streams and dispatches a single tool. This phase grows that to all seven tools behind a registry.
 :::
