@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-10-4-input-status
 
 # Phase 10.4 — Input & Status Bar
 
