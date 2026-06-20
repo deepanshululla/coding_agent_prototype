@@ -13,7 +13,9 @@ MAX_ITERATIONS = 30
 
 
 async def run_agent(
-    task: str, pending_messages: list[dict] | None = None
+    task: str,
+    pending_messages: list[dict] | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> list[dict]:
     """Run the agent on task and return the final message history.
 
@@ -26,6 +28,13 @@ async def run_agent(
     input box appends to; the outer loop reads from it for steering follow-ups.
     When None (the default), a fresh empty list is used so existing callers and
     tests are unaffected.
+
+    cancel_event, when provided (Phase 10.5), is an asyncio.Event the TUI sets
+    on Ctrl-C. It is checked at the top of each inner-loop pass; if set, it is
+    cleared, an "agent_cancelled" event is emitted, and the inner loop breaks
+    (cooperative, not preemptive — one in-flight streaming response may still
+    complete before the cancel takes effect). When None (the default) the check
+    is skipped, preserving backward compatibility.
     """
     system_prompt = build_system_prompt()
     messages: list[dict] = [{"role": "user", "content": task}]
@@ -39,6 +48,12 @@ async def run_agent(
 
         # INNER LOOP: the tool-call cycle.
         while has_more_tool_calls and iteration < MAX_ITERATIONS:
+            # Cooperative cancel: Ctrl-C in the TUI sets this event.
+            if cancel_event is not None and cancel_event.is_set():
+                cancel_event.clear()
+                emit({"type": "agent_cancelled"})
+                break  # exit inner loop; outer loop waits for input
+
             iteration += 1
 
             # ── Phase A: stream the model response, accumulating as we go. ──

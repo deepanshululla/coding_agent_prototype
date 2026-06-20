@@ -6,6 +6,10 @@ description: Add Vim-style modal keybindings (NORMAL/INSERT/COMMAND modes), coop
 
 # Layer 10.5 — Keybindings & Themes
 
+:::note Implemented
+This step is implemented on branch `step/phase-10-5-keys-themes` (plan: `plans/tutorial/phase-10-5-keys-themes.md`).
+:::
+
 :::note Starting point
 The full four-region app from Layer 10.4: transcript pane, tool panel, input box, and status bar. `AGENT_UI=tui` launches a fully laid-out app, but there are no keybindings beyond Textual's built-ins and no way to change the color scheme.
 :::
