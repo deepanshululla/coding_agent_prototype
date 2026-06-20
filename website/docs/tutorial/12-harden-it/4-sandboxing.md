@@ -6,6 +6,10 @@ description: Isolate the agent's file writes in a throwaway git worktree (or con
 
 # Layer 12.4 — Sandboxing
 
+:::note Implemented
+This step is implemented on branch `step/phase-12-4-sandboxing` (plan: `plans/tutorial/phase-12-4-sandboxing.md`).
+:::
+
 :::note Starting point
 The agent from Layer 12.3: a `PolicyEngine` gates every tool call and `AGENT_PERMISSION_MODE` selects the operating posture. The agent can now be locked read-only or prompted before writes. But when it does write — in `ask` or `auto` mode — those writes land directly in your main working tree. A partial refactor, a wrong path, or a half-completed edit leaves your tree damaged.
 :::

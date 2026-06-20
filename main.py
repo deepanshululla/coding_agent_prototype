@@ -6,6 +6,11 @@ Usage:
 With no argument, prompts for a task interactively. Set AGENT_UI=tui to
 launch the full-screen Textual UI; the default (stdout) streams to the
 terminal exactly as before.
+
+Pass --sandbox as the first argument to run the agent inside a throwaway git
+worktree (Layer 12.4); the agent's writes land on a fresh branch and your main
+working tree is untouched. The post-run hint shows how to review, merge, or
+discard the result.
 """
 
 import asyncio
@@ -21,7 +26,26 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 def main() -> None:
     load_dotenv()
-    task = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else input("Task: ")
+    args = sys.argv[1:]
+
+    # --sandbox: run inside a throwaway git worktree (Layer 12.4). The flag must
+    # be the first argument; everything after it is the task.
+    if args and args[0] == "--sandbox":
+        task = " ".join(args[1:]) if len(args) > 1 else input("Task: ")
+        if not task.strip():
+            print("No task provided.")
+            return
+        from sandbox import run_in_worktree
+
+        worktree = asyncio.run(run_in_worktree(task))
+        run_id = worktree.name.split("-")[-1]
+        print(f"\n--- Agent finished in worktree: {worktree}")
+        print(f"    Review:  git -C {worktree} diff HEAD")
+        print(f"    Merge:   git merge agent/task-{run_id}")
+        print(f"    Discard: git worktree remove {worktree} --force")
+        return
+
+    task = " ".join(args) if args else input("Task: ")
     if not task.strip():
         print("No task provided.")
         return

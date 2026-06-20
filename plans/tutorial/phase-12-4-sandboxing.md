@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-12-4-sandboxing
 
 # Phase 12.4 — Sandboxing
 
