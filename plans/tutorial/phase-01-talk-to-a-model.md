@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-01-talk-to-a-model
 
 # Phase 1 — Talk to a Model
 

@@ -12,9 +12,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [tool.pytest.ini_options]
 # src/ is not a package (no __init__.py); put it on the path for imports.
 pythonpath = ["src"]
 testpaths = ["tests"]
+asyncio_mode = "auto"

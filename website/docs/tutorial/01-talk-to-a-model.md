@@ -6,6 +6,10 @@ description: Build a ModelClient wrapper around the Claude CLI (`claude -p`) and
 
 # Phase 1 — Talk to a Model
 
+:::note Implemented
+This step is implemented on branch `step/phase-01-talk-to-a-model` (plan: `plans/tutorial/phase-01-talk-to-a-model.md`).
+:::
+
 :::note Starting point
 An empty project — `uv` initialized, no dependencies yet. The only requirement is the `claude` CLI on your PATH and a completed login (`claude` once interactively, or `claude setup-token`). No `ANTHROPIC_API_KEY` needed for this phase.
 :::
