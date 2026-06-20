@@ -6,6 +6,10 @@ description: Implement the open SKILL.md standard — discover installed skill f
 
 # Layer 13.4 — Agent Skills (Install & Read)
 
+:::note Implemented
+This step is implemented on branch `step/phase-13-4-agent-skills` (plan: `plans/tutorial/phase-13-4-agent-skills.md`).
+:::
+
 :::note Starting point
 Layer 13.3 complete: `src/skills.py` holds a dict-based registry; `AGENT_SKILLS` controls which blocks are active; `build_system_prompt` accepts a `skills` parameter. The test suite passes.
 :::

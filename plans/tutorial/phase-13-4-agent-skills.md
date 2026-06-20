@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-13-4-agent-skills
 
 # Phase 13.4 — Agent Skills (Install & Read)
 
