@@ -142,18 +142,45 @@ async def stream_response(
         yield chunk
 
 
+def _flatten_content(content: object) -> str:
+    """Render a message's content as plain text for the text-only CLI fork.
+
+    Content is usually a string, but a multimodal user message (image paste) is a
+    list of typed blocks — {"type": "text", ...} and {"type": "image_url", ...}.
+    `claude -p` cannot receive image bytes through a flattened prompt, so text
+    blocks are kept and image blocks become a clear placeholder (never the raw
+    base64 payload). A plain string passes through unchanged.
+    """
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return "" if content is None else str(content)
+    rendered: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            rendered.append(str(block))
+        elif block.get("type") == "text":
+            rendered.append(str(block.get("text", "")))
+        elif block.get("type") == "image_url":
+            rendered.append("[image omitted — CLI fork is text-only]")
+        else:
+            rendered.append(str(block))
+    return " ".join(part for part in rendered if part)
+
+
 def _messages_to_prompt(system_prompt: str, messages: list[dict]) -> str:
     """Flatten the system prompt + message history into one text prompt.
 
     `claude -p` takes a single prompt string, not a structured message list, so
     we render the conversation as labelled turns. Tool messages are folded in as
     plain text — this fork is text-only, so there is no tool_calls structure to
-    preserve, just the content the model needs to read.
+    preserve, just the content the model needs to read. Multimodal content (image
+    paste) is flattened via _flatten_content so the fork never chokes on a list.
     """
     parts = [f"System: {system_prompt}"]
     for msg in messages:
         role = msg.get("role", "user")
-        content = msg.get("content") or ""
+        content = _flatten_content(msg.get("content"))
         parts.append(f"{role.capitalize()}: {content}")
     return "\n\n".join(parts)
 

@@ -41,12 +41,15 @@ class StatusBar(Static):
         self._waiting = False
         self._error: str | None = None
         self._permission: str | None = None
+        # Transient one-shot note (e.g. "image 1 attached"); cleared on next turn.
+        self._hint: str | None = None
         self._color = (theme or {}).get("status", "grey70")
 
     def set_iteration(self, n: int) -> None:
         self._iter = n
         # A new turn means the agent is active again, not idle.
         self._waiting = False
+        self._hint = None
         self._refresh_label()
 
     def set_done(self, total: int) -> None:
@@ -74,6 +77,15 @@ class StatusBar(Static):
         self._permission = label
         self._refresh_label()
 
+    def set_hint(self, message: str) -> None:
+        """Show a transient note (image attached / no image / too large).
+
+        Persists until the next turn event clears it, so a Ctrl+V result stays
+        visible while the user keeps typing.
+        """
+        self._hint = message
+        self._refresh_label()
+
     def _refresh_label(self) -> None:
         # NB: named _refresh_label, NOT _render — Textual's Widget._render() is a
         # reserved internal that must return a Visual; overriding it with a
@@ -94,4 +106,6 @@ class StatusBar(Static):
             state = f"iter {self._iter}/{self._max}"
         perm = f"  •  {self._permission}" if self._permission else ""
         line = f" {self._model}{perm}  •  {state}  •  {elapsed}s"
+        if self._hint:
+            line += f"  •  {self._hint}"
         self.update(Text(line, style=self._color))
