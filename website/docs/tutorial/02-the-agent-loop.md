@@ -6,6 +6,10 @@ description: Build the while-loop skeleton in agent.py — messages as conversat
 
 # Phase 2 — The Conversation Loop
 
+:::note Implemented
+This step is implemented on branch `step/phase-02-the-agent-loop` (plan: `plans/tutorial/phase-02-the-agent-loop.md`).
+:::
+
 :::note Starting point
 Phase 1's `src/provider.py` — a `call_model` coroutine that returns the model's text. This phase wraps it in a loop.
 :::
