@@ -6,6 +6,10 @@ description: Swap ModelClient's body from `claude -p` to `litellm.acompletion` �
 
 # Phase 11 — Add LiteLLM (Multi-Provider)
 
+:::note Implemented
+This step is implemented on branch `step/phase-11-add-litellm` (plan: `plans/tutorial/phase-11-add-litellm.md`).
+:::
+
 :::note Starting point
 The finished agent from Phase 9 (or 10), whose model backend is the `claude -p` wrapper in `src/provider.py`. The agent loop, tools, and tests all depend on `stream_response(messages, system_prompt)` yielding OpenAI-format chunks — that interface does not change in this phase.
 :::
