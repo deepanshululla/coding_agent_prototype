@@ -3,13 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 
+from prompts import build_system_prompt
 from provider import stream_response
 from tools import TOOL_REGISTRY
 from types_ import ToolResult
 
 MAX_ITERATIONS = 30
-
-SYSTEM_PROMPT = "You are a helpful coding assistant."
 
 
 async def run_agent(task: str) -> list[dict]:
@@ -20,6 +19,7 @@ async def run_agent(task: str) -> list[dict]:
     requested tools — dispatches them and injects each result as a role:"tool"
     message before looping back to the model. A plain text turn ends the loop.
     """
+    system_prompt = build_system_prompt()
     messages: list[dict] = [{"role": "user", "content": task}]
 
     # OUTER LOOP: re-enters if follow-up messages arrive. Runs once for now.
@@ -38,7 +38,7 @@ async def run_agent(task: str) -> list[dict]:
 
             async for chunk in stream_response(
                 messages=messages,
-                system_prompt=SYSTEM_PROMPT,
+                system_prompt=system_prompt,
             ):
                 choice = chunk.choices[0]
                 delta = choice.delta

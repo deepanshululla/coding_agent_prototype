@@ -6,6 +6,10 @@ description: Ground the agent with a dynamic system prompt (cwd, date, tool list
 
 # Phase 8 — System Prompt & CLI
 
+:::note Implemented
+This step is implemented on branch `step/phase-08-system-prompt-and-cli` (plan: `plans/tutorial/phase-08-system-prompt-and-cli.md`).
+:::
+
 :::note Starting point
 Phase 7's parallel-executing loop — complete, but with no system prompt, no iteration cap, and no entry point. This phase ships it.
 :::

@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-08-system-prompt-and-cli
 
 # Phase 8 — System Prompt & CLI
 
