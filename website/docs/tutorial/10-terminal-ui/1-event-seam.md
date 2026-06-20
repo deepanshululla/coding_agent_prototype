@@ -6,6 +6,10 @@ description: Refactor every print() in agent.py into an emit(event) call dispatc
 
 # Layer 10.1 — The `emit()` Seam
 
+:::note Implemented
+This step is implemented on branch `step/phase-10-1-event-seam` (plan: `plans/tutorial/phase-10-1-event-seam.md`).
+:::
+
 :::note Starting point
 The finished stdout agent from Phase 9: `src/agent.py`, `src/tools.py`, `src/provider.py`, `src/prompts.py`, `src/types_.py`, `main.py`, and a passing test suite (`uv run pytest -q` → 17 passed). No UI yet — just the loop printing to stdout.
 :::
