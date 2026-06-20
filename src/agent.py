@@ -268,7 +268,7 @@ def _load_architectures() -> None:
     this module, so resolution works even if the package import is a no-op.
     """
     try:
-        import architectures  # noqa: F401  # ty: ignore[unresolved-import]
+        import architectures  # noqa: F401
     except ModuleNotFoundError:
         pass  # only the built-in reactive architecture is available
 
