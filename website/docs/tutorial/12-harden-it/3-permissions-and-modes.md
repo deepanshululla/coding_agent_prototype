@@ -6,6 +6,10 @@ description: Add a PolicyEngine and AGENT_PERMISSION_MODE switch so the same age
 
 # Layer 12.3 — Permissions & Modes
 
+:::note Implemented
+This step is implemented on branch `step/phase-12-3-permissions-and-modes` (plan: `plans/tutorial/phase-12-3-permissions-and-modes.md`).
+:::
+
 :::note Starting point
 The agent from Layer 12.2: a command allowlist gate in `_execute_one_tool` refuses unlisted programs. Every other tool call — including `write_file` and `edit_file` — still executes without confirmation. There is no way to lock the agent to read-only or to require human approval before file writes.
 :::
