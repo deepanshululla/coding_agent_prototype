@@ -1,0 +1,34 @@
+Add persistent memory system for agent
+
+Implements a project-scoped memory system that stores memories as markdown
+files with YAML frontmatter in ~/.agent_memory/<project_hash>/.
+
+## Core features
+- Memory dataclass (name, description, type, content, timestamps)
+- Four memory types: user, feedback, project, reference
+- Frontmatter parser (manual YAML subset, no dependencies)
+- Project-specific directories using SHA-256 hash of cwd
+- Auto-loads up to MEMORY_MAX_LOAD memories into system prompt
+- Type-based priority sorting (feedback > user > project > reference)
+
+## New tools
+- save_memory: validates inputs, preserves created timestamp on updates
+- list_memories: returns formatted list of all project memories
+
+## Configuration
+- MEMORY_DIR: base directory (default: ~/.agent_memory)
+- MEMORY_ENABLED: toggle memory loading (default: True)
+- MEMORY_MAX_LOAD: max memories in prompt (default: 10)
+
+## Tests
+- 9 tests for memory.py (parse, save, load, project dir)
+- 5 tests for memory tools (save, update, list, validation)
+- 4 tests for prompt integration (loading, sorting, max_load)
+- All tests use tmp_path for isolation
+
+## Cross-architecture support
+Works across all architectures (reactive, orchestrator-worker, evaluator-optimizer,
+planner-executor) because memories are loaded in build_system_prompt() and all
+architectures receive the same RunContext with the populated system prompt.
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>

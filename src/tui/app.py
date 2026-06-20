@@ -23,9 +23,9 @@ from textual.reactive import reactive
 
 import config
 import provider
+from tui.components.activity_panel import ActivityPanel
 from tui.components.input_box import InputBox
 from tui.components.status_bar import StatusBar
-from tui.components.tool_panel import ToolPanel
 from tui.components.transcript import TranscriptPane
 from tui.themes import get_theme
 
@@ -144,7 +144,7 @@ class AgentApp(App):
     def compose(self) -> ComposeResult:
         with Horizontal():
             yield TranscriptPane(highlight=True, markup=False, theme=self.theme_dict)
-            yield ToolPanel(theme=self.theme_dict)
+            yield ActivityPanel(theme=self.theme_dict)
         # compact=True keeps the input borderless even on focus — a tall focus
         # border on this height-1 box would squeeze its single text row out of
         # view. select_on_focus=False stops focus from highlighting (and thereby
@@ -392,10 +392,14 @@ class AgentApp(App):
         t = event["type"]
         if t == "text_delta":
             self.query_one(TranscriptPane).append_text(event["delta"])
+        elif t == "turn_start":
+            self.query_one(ActivityPanel).start_turn(event["iteration"], event["model"])
+        elif t == "thinking_delta":
+            self.query_one(ActivityPanel).note_thinking()
         elif t == "tool_call_start":
-            self.query_one(ToolPanel).add_tool_row(event["index"], event["name"])
+            self.query_one(ActivityPanel).add_tool(event["index"], event["name"])
         elif t == "tool_call_end":
-            self.query_one(ToolPanel).finish_tool_row(
+            self.query_one(ActivityPanel).finish_tool(
                 event["index"],
                 ok=not event["is_error"],
                 chars=event["chars"],
@@ -403,6 +407,9 @@ class AgentApp(App):
         elif t == "turn_end":
             # Finalize the turn by re-rendering streamed text as markdown
             self.query_one(TranscriptPane).finalize_turn()
+            self.query_one(ActivityPanel).end_turn(
+                event["iteration"], event["finish_reason"], event["tool_calls_count"]
+            )
             self.query_one(StatusBar).set_iteration(event["iteration"])
         elif t == "agent_end":
             self.query_one(StatusBar).set_done(event["total_iterations"])

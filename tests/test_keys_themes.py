@@ -15,7 +15,7 @@ Scenario: Vim-style modal keybindings and theme env var changes colors
       and returns to NORMAL mode
   And pressing Ctrl-C during a run cancels the in-flight turn and the status bar
       shows "cancelled"
-  And setting AGENT_THEME=light changes the ToolPanel "tool_ok" color to the
+  And setting AGENT_THEME=light changes the ActivityPanel "tool_ok" color to the
       light theme value
   And setting AGENT_THEME=light changes the StatusBar "status" color to the
       light theme value
@@ -28,9 +28,9 @@ from rich.text import Text
 import agent
 from provider import _chunk, _tc
 from tui.app import AgentApp
+from tui.components.activity_panel import ActivityPanel
 from tui.components.input_box import InputBox
 from tui.components.status_bar import StatusBar
-from tui.components.tool_panel import ToolPanel
 from tui.emit import set_app
 from tui.themes import THEMES, get_theme
 
@@ -347,7 +347,7 @@ def test_default_theme_is_dark():
         app = AgentApp("noop")
         async with app.run_test():
             assert app.theme_dict["tool_ok"] == "bright_green"
-            assert app.query_one(ToolPanel)._theme["tool_ok"] == "bright_green"
+            assert app.query_one(ActivityPanel)._theme["tool_ok"] == "bright_green"
             assert app.query_one(StatusBar)._color == "grey70"
 
     asyncio.run(_run())
@@ -359,17 +359,18 @@ def test_light_theme_changes_widget_colors(monkeypatch):
     async def _run():
         app = AgentApp("noop")
         async with app.run_test() as pilot:
-            panel = app.query_one(ToolPanel)
+            panel = app.query_one(ActivityPanel)
             bar = app.query_one(StatusBar)
-            # ToolPanel "tool_ok" color is the light-theme value.
+            # ActivityPanel "tool_ok" color is the light-theme value.
             assert panel._theme["tool_ok"] == THEMES["light"]["tool_ok"]
             # StatusBar "status" color is the light-theme value.
             assert bar._color == THEMES["light"]["status"]
             # And the applied color surfaces on a finished tool row.
-            panel.add_tool_row(0, "read_file")
-            panel.finish_tool_row(0, ok=True, chars=10)
+            panel.start_turn(1, "m")
+            panel.add_tool(0, "read_file")
+            panel.finish_tool(0, ok=True, chars=10)
             await pilot.pause()
-            icon = panel.get_cell("0", "icon")
+            icon = panel.log.get_cell("t1-tool0", "icon")
             assert isinstance(icon, Text)
             assert icon.style == THEMES["light"]["tool_ok"]
 

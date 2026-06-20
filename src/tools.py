@@ -231,6 +231,84 @@ async def load_skill(name: str) -> str:
     return skill.body
 
 
+async def save_memory(name: str, description: str, type: str, content: str) -> str:
+    """Save a memory to the project-specific memory directory.
+
+    Args:
+        name: Kebab-case slug (e.g. "user-role", "feedback-testing")
+        description: One-line summary
+        type: One of: user, feedback, project, reference
+        content: Markdown body content
+
+    Returns success message or validation error.
+    """
+    import asyncio
+    from datetime import UTC, datetime
+
+    import memory
+
+    VALID_TYPES = {"user", "feedback", "project", "reference"}
+    if type not in VALID_TYPES:
+        return f"Error: type must be one of {VALID_TYPES}, got {type!r}"
+
+    if not name or not description or not content:
+        return "Error: name, description, and content are required"
+
+    def _save():
+        mem_dir = memory.get_project_memory_dir(os.getcwd())
+
+        # Check if memory already exists to preserve created timestamp
+        mem_path = mem_dir / f"{name}.md"
+        existing = None
+        if mem_path.exists():
+            try:
+                existing = memory.parse_memory_file(mem_path)
+            except Exception:
+                pass
+
+        from types_ import Memory
+
+        now = datetime.now(UTC).isoformat()
+        mem = Memory(
+            name=name,
+            description=description,
+            type=type,
+            content=content,
+            created=existing.created if existing else now,
+            updated=now,
+        )
+        memory.save_memory_file(mem, mem_dir)
+        return f"Saved memory: {name}"
+
+    return await asyncio.to_thread(_save)
+
+
+async def list_memories() -> str:
+    """List all memories in the project-specific memory directory.
+
+    Returns a formatted list of memories with their descriptions.
+    """
+    import asyncio
+
+    import memory
+
+    def _list():
+        mem_dir = memory.get_project_memory_dir(os.getcwd())
+        if not mem_dir.exists():
+            return "No memories saved yet."
+
+        memories = memory.load_all_memories(mem_dir)
+        if not memories:
+            return "No memories saved yet."
+
+        lines = ["## Project Memories", ""]
+        for mem in memories:
+            lines.append(f"- **{mem.name}** ({mem.type}): {mem.description}")
+        return "\n".join(lines)
+
+    return await asyncio.to_thread(_list)
+
+
 # ── schemas + registry ───────────────────────────────────────────────────────
 
 TOOLS_SCHEMA: list[dict] = [
@@ -383,6 +461,57 @@ TOOLS_SCHEMA: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_memory",
+            "description": (
+                "Save a memory to the project-specific memory directory. "
+                "Memories persist across conversations and are loaded into "
+                "the system prompt automatically."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Kebab-case slug (e.g., 'user-role', 'feedback-testing')",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "One-line summary of what this memory contains",
+                    },
+                    "type": {
+                        "type": "string",
+                        "description": (
+                            "Memory type: 'user' (about the user), "
+                            "'feedback' (how to approach work), "
+                            "'project' (ongoing work/goals), "
+                            "or 'reference' (external pointers)"
+                        ),
+                        "enum": ["user", "feedback", "project", "reference"],
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Markdown body content",
+                    },
+                },
+                "required": ["name", "description", "type", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_memories",
+            "description": "List all memories saved in the project-specific memory directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ]
 
 # Name → coroutine. The MCP client (Layer 13.5) injects extra entries at runtime
@@ -397,4 +526,6 @@ TOOL_REGISTRY: dict[str, Callable[..., Awaitable[str]]] = {
     "find_files": find_files,
     "list_dir": list_dir,
     "load_skill": load_skill,
+    "save_memory": save_memory,
+    "list_memories": list_memories,
 }

@@ -7,7 +7,7 @@ from typing import Any
 
 from architecture import RunContext, get_architecture, register
 from compaction import compact_if_needed
-from config import ARCHITECTURE, MAX_ITERATIONS
+from config import ARCHITECTURE, MAX_ITERATIONS, MODEL
 from logging_config import logger
 from policy import PolicyEngine
 from prompts import build_system_prompt
@@ -75,6 +75,11 @@ async def stream_turn(
     the model without ever touching the caller's real history.
     """
     context_to_send = await compact_if_needed(messages, system_prompt)
+
+    # Announce the model call before any tokens stream so the UI can show it
+    # starting (the activity panel adds a spinner row here). The matching
+    # turn_end is emitted once the stream completes.
+    emit({"type": "turn_start", "iteration": iteration, "model": model or MODEL})
 
     text_buf = ""
     thinking_buf = ""

@@ -127,18 +127,21 @@ def test_json_output_emits_ndjson_in_order(tmp_path, capsys):
     assert all(isinstance(p, dict) for p in parsed)
 
     # The collected events (same order the NDJSON lines were printed) match the
-    # actual emit sequence for this two-iteration run. The agent emits turn_end
-    # at the end of the streaming loop, *before* it dispatches the buffered tool
+    # actual emit sequence for this two-iteration run. Each turn opens with a
+    # turn_start (emitted before any tokens stream). The agent emits turn_end at
+    # the end of the streaming loop, *before* it dispatches the buffered tool
     # calls — so tool_call_end lands after turn_end within the first turn:
-    #   text_delta, tool_call_start, turn_end, tool_call_end,  (turn 1)
-    #   text_delta, turn_end,                                  (turn 2)
+    #   turn_start, text_delta, tool_call_start, turn_end, tool_call_end,  (turn 1)
+    #   turn_start, text_delta, turn_end,                                  (turn 2)
     #   agent_end
     types = [e["type"] for e in events]
     assert types == [
+        "turn_start",
         "text_delta",
         "tool_call_start",
         "turn_end",
         "tool_call_end",
+        "turn_start",
         "text_delta",
         "turn_end",
         "agent_end",

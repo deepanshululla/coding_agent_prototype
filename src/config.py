@@ -9,6 +9,7 @@ imported so .env is in os.environ when these module-level reads happen.
 """
 
 import os
+from pathlib import Path
 
 
 def _int(name: str, default: int) -> int:
@@ -77,3 +78,10 @@ MCP_CONFIG = os.environ.get("AGENT_MCP_CONFIG")
 # with a hint instead of bloating the request.
 IMAGE_PASTE = _bool("AGENT_IMAGE_PASTE", True)
 IMAGE_MAX_BYTES = _int("AGENT_IMAGE_MAX_BYTES", 5 * 1024 * 1024)
+
+# Agent memory: persistent memory system that stores memories as markdown files
+# in ~/.agent_memory/<project_hash>/. Memories are loaded into the system prompt
+# to provide context across conversations.
+MEMORY_DIR = Path.home() / ".agent_memory"
+MEMORY_ENABLED = _bool("AGENT_MEMORY_ENABLED", True)
+MEMORY_MAX_LOAD = _int("AGENT_MEMORY_MAX_LOAD", 10)

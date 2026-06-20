@@ -30,6 +30,10 @@ async def test_stream_response_default_model(monkeypatch):
     Phase 13.6 adds an optional `model` param; when omitted the call must keep
     using the module-level MODEL so existing callers and mocks are unaffected.
     """
+    # Pin the litellm path: importing litellm runs load_dotenv(), so a dev `.env`
+    # with USE_CLAUDE_CLI_LLM=1 would otherwise flip provider to the CLI fork and
+    # acompletion would never be called. This test asserts the litellm branch.
+    monkeypatch.setattr(provider, "USE_CLAUDE_CLI", False)
     captured = {}
 
     async def fake_acompletion(**kwargs):
@@ -51,6 +55,9 @@ async def test_stream_response_model_override(monkeypatch):
     BDD: Given default MODEL "claude-sonnet-4-5", When stream_response is called
     with model="gpt-4o", Then litellm.acompletion is called with model="gpt-4o".
     """
+    # Pin the litellm path regardless of any ambient USE_CLAUDE_CLI_LLM (litellm's
+    # import-time load_dotenv() can otherwise pull it from a dev `.env`).
+    monkeypatch.setattr(provider, "USE_CLAUDE_CLI", False)
     captured = {}
 
     async def fake_acompletion(**kwargs):

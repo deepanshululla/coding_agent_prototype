@@ -16,3 +16,19 @@ class ToolResult:
     tool_name: str
     content: str
     is_error: bool = False
+
+
+@dataclass
+class Memory:
+    """A persistent memory entry stored as a markdown file with frontmatter.
+
+    Memories are stored in ~/.agent_memory/<project_hash>/ and allow the agent
+    to recall information across conversations (sessions).
+    """
+
+    name: str  # kebab-case slug
+    description: str  # one-line summary
+    type: str  # user | feedback | project | reference
+    content: str  # markdown body
+    created: str  # ISO timestamp
+    updated: str  # ISO timestamp

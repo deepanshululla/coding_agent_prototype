@@ -82,5 +82,5 @@ def test_bash_reports_exit_code():
 def test_registry_matches_schema():
     schema_names = {t["function"]["name"] for t in tools.TOOLS_SCHEMA}
     assert schema_names == set(tools.TOOL_REGISTRY)
-    # 7 built-in tools + load_skill (Agent Skills, phase 13.4).
-    assert len(tools.TOOL_REGISTRY) == 8
+    # 7 built-in tools + load_skill + save_memory + list_memories
+    assert len(tools.TOOL_REGISTRY) == 10
