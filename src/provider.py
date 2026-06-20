@@ -8,8 +8,47 @@ from typing import Any
 
 import litellm
 
-from config import MAX_TOKENS, MODEL
+from config import MAX_TOKENS, MODEL, THINKING_BUDGET
 from tools import TOOLS_SCHEMA
+
+# Extended thinking (Phase 17) is only supported by some Claude models. We gate
+# on a substring rather than an exact id so provider-prefixed aliases (e.g.
+# "anthropic/claude-sonnet-4-5", "bedrock/...claude-sonnet-4...") still match.
+_THINKING_MODEL_MARKERS = ("claude-sonnet-4", "claude-opus-4", "claude-3-7")
+
+
+def _supports_thinking(model: str) -> bool:
+    """True if `model` is a Claude variant known to support extended thinking.
+
+    Conservative: only flips on for the marker families above. An unknown or
+    non-Claude model returns False so we never send a `thinking` param the
+    backend would reject.
+    """
+    m = (model or "").lower()
+    return any(marker in m for marker in _THINKING_MODEL_MARKERS)
+
+
+def _thinking_kwargs(model: str) -> dict:
+    """Build the litellm kwargs for extended thinking, or {} when disabled.
+
+    Returns the `thinking` param plus a bumped `max_tokens` only when
+    THINKING_BUDGET > 0 AND the model supports it. max_tokens must exceed
+    budget_tokens (the model needs room to answer after reasoning), so we floor
+    it at budget + 2000 and never below the configured MAX_TOKENS. When thinking
+    is off we still pass MAX_TOKENS so the call shape is otherwise unchanged.
+    """
+    if THINKING_BUDGET > 0 and _supports_thinking(model):
+        max_tokens = max(MAX_TOKENS, THINKING_BUDGET + 2000)
+        # Guard against misconfiguration — the API rejects budget >= max_tokens.
+        assert max_tokens > THINKING_BUDGET, (
+            f"max_tokens ({max_tokens}) must exceed THINKING_BUDGET "
+            f"({THINKING_BUDGET})"
+        )
+        return {
+            "thinking": {"type": "enabled", "budget_tokens": THINKING_BUDGET},
+            "max_tokens": max_tokens,
+        }
+    return {"max_tokens": MAX_TOKENS}
 
 # Phase 13.6: an opt-in fork that shells out to `claude -p` instead of LiteLLM.
 # Set USE_CLAUDE_CLI_LLM=1 to route stream_response through the local Claude CLI
@@ -19,7 +58,7 @@ from tools import TOOLS_SCHEMA
 USE_CLAUDE_CLI = os.environ.get("USE_CLAUDE_CLI_LLM", "") == "1"
 
 
-def _chunk(content=None, finish_reason=None, tool_calls=None):
+def _chunk(content=None, finish_reason=None, tool_calls=None, thinking=None, signature=None):
     """Build one OpenAI-format streaming chunk the agent loop understands.
 
     Uses SimpleNamespace so no provider SDK is needed in tests. litellm yields
@@ -27,8 +66,17 @@ def _chunk(content=None, finish_reason=None, tool_calls=None):
     that scripts these chunks — sees one interface regardless of backend.
     tool_calls carries a list of streamed tool-call fragments, each shaped like
     _tc() below.
+
+    thinking / signature (Phase 17) carry an extended-thinking delta. litellm
+    surfaces the reasoning stream as `delta.thinking` and the verification
+    signature as `delta.thinking_blocks[...].signature`; we expose both on the
+    delta so scripted chunks can drive the agent's thinking accumulator. When
+    thinking is None the delta is shaped exactly as before, so non-thinking
+    callers and the existing tests are unaffected.
     """
-    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls, thinking=thinking)
+    if signature is not None:
+        delta.signature = signature
     choice = SimpleNamespace(delta=delta, finish_reason=finish_reason)
     return SimpleNamespace(choices=[choice])
 
@@ -72,13 +120,15 @@ async def stream_response(
         return
 
     full_messages = [{"role": "system", "content": system_prompt}] + messages
+    # _thinking_kwargs carries max_tokens (and, when extended thinking is on and
+    # the model supports it, the `thinking` param with a bumped max_tokens).
     response = await litellm.acompletion(
         model=effective_model,
         messages=full_messages,
         tools=TOOLS_SCHEMA,
         tool_choice="auto",
-        max_tokens=MAX_TOKENS,
         stream=True,
+        **_thinking_kwargs(effective_model),
     )
     async for chunk in response:
         yield chunk

@@ -126,6 +126,8 @@ async def run_agent(
             context_to_send = await compact_if_needed(messages, system_prompt)
 
             text_buf = ""
+            thinking_buf = ""
+            thinking_signature = None
             tool_acc: dict[int, dict] = {}
             finish_reason = None
 
@@ -138,6 +140,19 @@ async def run_agent(
                 delta = choice.delta
                 # Carry the last non-None finish_reason forward.
                 finish_reason = choice.finish_reason or finish_reason
+
+                # Extended thinking (Phase 17): the model streams its reasoning
+                # on delta.thinking before the answer. We accumulate it into
+                # thinking_buf and surface it only on a debug channel — never on
+                # normal stdout — so the scratchpad stays out of the visible
+                # output. The guard short-circuits when thinking is disabled.
+                if getattr(delta, "thinking", None):
+                    thinking_buf += delta.thinking
+                    emit({"type": "thinking_delta", "delta": delta.thinking})
+                # The signature verifies the thinking block on replay; it must be
+                # echoed back verbatim in later turns, so capture the last one.
+                if getattr(delta, "signature", None):
+                    thinking_signature = delta.signature
 
                 if getattr(delta, "content", None):
                     text_buf += delta.content
@@ -187,7 +202,23 @@ async def run_agent(
             # ── Phase B: append the assistant turn. ────────────────────────
             # Must include tool_calls (even with empty content) or the provider
             # rejects the next request as malformed.
-            assistant_msg: dict = {"role": "assistant", "content": text_buf or None}
+            #
+            # Extended thinking (Phase 17): when the model reasoned, its thinking
+            # block must be preserved verbatim — with its signature — and placed
+            # BEFORE the text block, since the API requires thinking to precede
+            # text/tool_use in content. We therefore build content as a list of
+            # typed blocks instead of a plain string. The signature must be
+            # echoed back unchanged on later turns, so it rides along in history.
+            # When no thinking occurred, content stays a plain string, keeping
+            # the message shape backward-compatible for every prior phase.
+            if thinking_buf:
+                thinking_block: dict = {"type": "thinking", "thinking": thinking_buf}
+                if thinking_signature is not None:
+                    thinking_block["signature"] = thinking_signature
+                content: object = [thinking_block, {"type": "text", "text": text_buf}]
+            else:
+                content = text_buf or None
+            assistant_msg: dict = {"role": "assistant", "content": content}
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
             messages.append(assistant_msg)

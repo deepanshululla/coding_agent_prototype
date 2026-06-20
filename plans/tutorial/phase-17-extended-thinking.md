@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-17-extended-thinking
 
 # Phase 17 — Extended Thinking
 

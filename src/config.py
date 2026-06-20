@@ -32,6 +32,17 @@ def _csv(name: str, default: list[str]) -> list[str]:
 MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")
 MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
 
+# Extended thinking (Phase 17). When THINKING_BUDGET > 0 the provider asks the
+# model to reason in a scratchpad before answering; the budget is the token
+# allowance for that reasoning. Disabled by default (0) because each thinking
+# turn costs budget_tokens extra even when unused — earn its keep on multi-step
+# planning / architectural refactors. THINKING_BUDGET and MAX_TOKENS are both
+# also readable via the bare env names THINKING_BUDGET / MAX_TOKENS (the plan's
+# names) for convenience.
+THINKING_BUDGET = _int(
+    "THINKING_BUDGET", _int("AGENT_THINKING_BUDGET", 0)
+)
+
 # ── Loop ─────────────────────────────────────────────────────────────────────
 MAX_ITERATIONS = _int("AGENT_MAX_ITERATIONS", 30)
 SYSTEM_PROMPT_EXTRA = os.environ.get("AGENT_SYSTEM_PROMPT_EXTRA", "")
