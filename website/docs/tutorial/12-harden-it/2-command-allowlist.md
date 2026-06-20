@@ -5,6 +5,9 @@ description: Install a default-deny allowlist gate in _execute_one_tool so only 
 ---
 
 # Layer 12.2 — Command Allowlist
+:::note Implemented
+This step is implemented on branch `step/phase-12-2-command-allowlist` (plan: `plans/tutorial/phase-12-2-command-allowlist.md`).
+:::
 
 :::note Starting point
 The unguarded LiteLLM agent from Layer 12.1: `bash` executes every command the model requests, with no allowlist and no approval prompt. The threat model is understood; this layer adds the first hard control.

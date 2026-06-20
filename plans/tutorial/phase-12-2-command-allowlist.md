@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-12-2-command-allowlist
 
 # Phase 12.2 — Command Allowlist
 
