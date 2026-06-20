@@ -6,6 +6,10 @@ description: Give the model explicit scratchpad space before it answers — a se
 
 # Phase 17 — Extended Thinking
 
+:::note Implemented
+This step is implemented on branch `step/phase-17-extended-thinking` (plan: `plans/tutorial/phase-17-extended-thinking.md`).
+:::
+
 :::note Starting point
 The agent with context compaction from Phase 16. It handles long sessions without hitting the context limit. For hard multi-step problems, the model may still benefit from explicit reasoning before committing to an action.
 :::
