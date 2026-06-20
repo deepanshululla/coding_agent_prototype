@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-13-2-prompt-templates-and-hooks
 
 # Phase 13.2 — Prompt Templates & Hooks
 

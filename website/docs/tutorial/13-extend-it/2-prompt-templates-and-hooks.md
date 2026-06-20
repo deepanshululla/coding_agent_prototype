@@ -6,6 +6,10 @@ description: Add per-session instruction injection via the extra parameter and b
 
 # Layer 13.2 — Prompt Templates & Hooks
 
+:::note Implemented
+This step is implemented on branch `step/phase-13-2-prompt-templates-and-hooks` (plan: `plans/tutorial/phase-13-2-prompt-templates-and-hooks.md`).
+:::
+
 :::note Starting point
 Layer 13.1 complete: `src/project_instructions.py` loads `AGENTS.md` / `CLAUDE.md` into the system prompt via `extra`. The test suite passes.
 :::

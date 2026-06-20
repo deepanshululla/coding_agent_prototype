@@ -37,6 +37,8 @@ async def run_agent(
     pending_messages: list[dict] | None = None,
     cancel_event: asyncio.Event | None = None,
     system_prompt: str | None = None,
+    before_tool_call=None,
+    after_tool_call=None,
 ) -> list[dict]:
     """Run the agent on task and return the final message history.
 
@@ -54,6 +56,13 @@ async def run_agent(
     (e.g. carrying project instructions folded in via build_system_prompt's
     extra=...). When None (the default) it is built here with no extra, so
     existing callers and tests are unaffected.
+
+    before_tool_call / after_tool_call, when provided (Phase 13.2), are async
+    hook functions threaded into _execute_one_tool. before_tool_call(name, args)
+    runs before dispatch; returning False denies the call (error ToolResult,
+    tool never runs). after_tool_call(name, args, result) runs after a
+    successful dispatch and its return value replaces the result string. Both
+    default to None, leaving the loop unchanged for existing callers.
 
     cancel_event, when provided (Phase 10.5), is an asyncio.Event the TUI sets
     on Ctrl-C. It is checked at the top of each inner-loop pass; if set, it is
@@ -158,7 +167,11 @@ async def run_agent(
                 }
                 for i, tc in enumerate(tool_calls)
             ]
-            results = await _execute_tools_parallel(parsed_calls)
+            results = await _execute_tools_parallel(
+                parsed_calls,
+                before_tool_call=before_tool_call,
+                after_tool_call=after_tool_call,
+            )
 
             # ── Phase E: push one role:"tool" message per result. ──────────
             for r in results:
@@ -177,12 +190,33 @@ async def run_agent(
     return messages
 
 
-async def _execute_tools_parallel(tool_calls: list[dict]) -> list[ToolResult]:
-    """Run every requested tool concurrently and gather their results in order."""
-    return await asyncio.gather(*(_execute_one_tool(tc) for tc in tool_calls))
+async def _execute_tools_parallel(
+    tool_calls: list[dict],
+    before_tool_call=None,
+    after_tool_call=None,
+) -> list[ToolResult]:
+    """Run every requested tool concurrently and gather their results in order.
+
+    Hooks (Phase 13.2) are threaded through to each _execute_one_tool. When both
+    are None (the default) behaviour is identical to before.
+    """
+    return await asyncio.gather(
+        *(
+            _execute_one_tool(
+                tc,
+                before_tool_call=before_tool_call,
+                after_tool_call=after_tool_call,
+            )
+            for tc in tool_calls
+        )
+    )
 
 
-async def _execute_one_tool(tool_call: dict) -> ToolResult:
+async def _execute_one_tool(
+    tool_call: dict,
+    before_tool_call=None,  # async (name, args) -> bool | None
+    after_tool_call=None,   # async (name, args, result) -> str
+) -> ToolResult:
     """Look up one tool by name, call it, and wrap the outcome in a ToolResult.
 
     Both an unknown tool and an exception become an is_error result rather than
@@ -203,6 +237,19 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
               "tool_call_id": tool_call["id"], "name": name,
               "content": f"Unknown tool: {name}", "is_error": True, "chars": 0})
         return ToolResult(tool_call["id"], name, f"Unknown tool: {name}", is_error=True)
+
+    # ── beforeToolCall hook (Phase 13.2) ──────────────────────────────────
+    # Runs before the policy gate and dispatch. Returning False denies the
+    # call — the tool never runs and the model reads the denial as an error.
+    # Returning None or True (or no hook at all) lets the call proceed.
+    if before_tool_call is not None:
+        approved = await before_tool_call(name, args)
+        if approved is False:
+            reason = f"Tool call denied: {name}"
+            emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+                  "tool_call_id": tool_call["id"], "name": name,
+                  "content": reason, "is_error": True, "chars": 0})
+            return ToolResult(tool_call["id"], name, reason, is_error=True)
 
     # ── Policy gate ───────────────────────────────────────────────────────
     # The PolicyEngine (selected by AGENT_PERMISSION_MODE) evaluates the call
@@ -239,6 +286,13 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
               "tool_call_id": tool_call["id"], "name": name,
               "content": f"Error: {e}", "is_error": True, "chars": 0})
         return ToolResult(tool_call["id"], name, f"Error: {e}", is_error=True)
+    # ── afterToolCall hook (Phase 13.2) ───────────────────────────────────
+    # Runs after a successful dispatch. Its return value replaces the result
+    # string, so hook authors must return the result (even if unmodified) to
+    # log, redact, or transform tool output before it enters message history.
+    if after_tool_call is not None:
+        result = await after_tool_call(name, args, result)
+
     logger.debug("tool {} ok: {} chars", name, len(result))
     emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
           "tool_call_id": tool_call["id"], "name": name,
