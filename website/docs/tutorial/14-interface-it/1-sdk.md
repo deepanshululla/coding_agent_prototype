@@ -6,6 +6,10 @@ description: Import run_agent() from agent.py and drive it from your own async c
 
 # Layer 14.1 — The SDK
 
+:::note Implemented
+This step is implemented on branch `step/phase-14-1-sdk` (plan: `plans/tutorial/phase-14-1-sdk.md`).
+:::
+
 :::note Starting point
 The extended agent from Phase 13 with a TUI (Phase 10). `run_agent(task)` in `src/agent.py` returns the final message history (`list[dict]`). Entry is human/CLI only — `main.py` calls it; nothing else can.
 :::
