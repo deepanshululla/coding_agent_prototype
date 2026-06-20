@@ -215,6 +215,21 @@ async def list_dir(path: str = ".") -> str:
     return await asyncio.to_thread(_list)
 
 
+# ── load_skill ───────────────────────────────────────────────────────────────
+
+
+async def load_skill(name: str) -> str:
+    """Return the full instruction body of an installed skill by name."""
+    # Imported lazily so tools.py stays importable even if skills discovery
+    # has heavier deps, and to rescan freshly on each call.
+    from skills import discover_skills
+
+    skill = discover_skills().get(name)
+    if skill is None:
+        return f"Error: no installed skill named {name!r}"
+    return skill.body
+
+
 # ── schemas + registry ───────────────────────────────────────────────────────
 
 TOOLS_SCHEMA: list[dict] = [
@@ -323,6 +338,23 @@ TOOLS_SCHEMA: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "load_skill",
+            "description": (
+                "Load the full instruction body of an installed skill. "
+                "Call this when you recognize a skill in the skills menu applies to the current task."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Skill name as listed in the skills menu"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
 ]
 
 TOOL_REGISTRY = {
@@ -333,4 +365,5 @@ TOOL_REGISTRY = {
     "grep": grep,
     "find_files": find_files,
     "list_dir": list_dir,
+    "load_skill": load_skill,
 }

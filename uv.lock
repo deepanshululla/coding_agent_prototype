@@ -300,6 +300,7 @@ dependencies = [
     { name = "litellm" },
     { name = "loguru" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "textual" },
 ]
 
@@ -314,6 +315,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.51.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "textual", specifier = ">=8.2.7" },
 ]
 

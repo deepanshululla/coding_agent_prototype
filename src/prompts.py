@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from datetime import date
 
-from skills import ACTIVE_SKILLS, SKILLS
+from skills import ACTIVE_SKILLS, SKILLS, skills_menu
 
 
 def build_system_prompt(
@@ -26,6 +26,10 @@ def build_system_prompt(
     active = skills if skills is not None else ACTIVE_SKILLS
     skill_blocks = "\n".join(SKILLS[s] for s in active if s in SKILLS)
 
+    # Spec-compliant Agent Skills: one cheap menu line per discovered SKILL.md
+    # folder. The model calls load_skill to pull a full body in on demand.
+    menu = skills_menu()
+
     return f"""You are an expert coding assistant running inside a terminal agent harness.
 You help users by reading files, executing shell commands, editing code, and writing new files.
 
@@ -37,7 +41,10 @@ You help users by reading files, executing shell commands, editing code, and wri
 - grep: Search for text patterns across files
 - find_files: Find files by name pattern
 - list_dir: List directory contents
+- load_skill: Load the full instructions of a skill listed in the skills menu
 {skill_blocks}
+
+{menu}
 
 ## Guidelines
 - Start by understanding the task. Use read_file or list_dir to explore before making changes.
