@@ -5,6 +5,7 @@ import json
 
 from prompts import build_system_prompt
 from provider import stream_response
+from renderer import emit
 from tools import TOOL_REGISTRY
 from types_ import ToolResult
 
@@ -47,7 +48,7 @@ async def run_agent(task: str) -> list[dict]:
 
                 if getattr(delta, "content", None):
                     text_buf += delta.content
-                    print(delta.content, end="", flush=True)  # live output
+                    emit({"type": "text_delta", "delta": delta.content})
 
                 for tc_chunk in getattr(delta, "tool_calls", None) or []:
                     idx = tc_chunk.index
@@ -59,11 +60,14 @@ async def run_agent(task: str) -> list[dict]:
                     fn = getattr(tc_chunk, "function", None)
                     if fn and fn.name:
                         slot["name"] = fn.name
-                        print(f"\n▸ {fn.name}", end="", flush=True)
+                        emit({"type": "tool_call_start", "index": idx,
+                              "tool_call_id": slot["id"], "name": fn.name})
                     if fn and fn.arguments:
                         slot["arguments_buf"] += fn.arguments
 
-            print()  # newline after the streamed turn
+            emit({"type": "turn_end", "iteration": iteration,
+                  "finish_reason": finish_reason or "stop",
+                  "tool_calls_count": len(tool_acc)})
 
             # Finalize tool calls (arguments stay a JSON string in history).
             tool_calls = [
@@ -95,10 +99,11 @@ async def run_agent(task: str) -> list[dict]:
             parsed_calls = [
                 {
                     "id": tc["id"],
+                    "index": i,
                     "name": tc["function"]["name"],
                     "input": json.loads(tc["function"]["arguments"] or "{}"),
                 }
-                for tc in tool_calls
+                for i, tc in enumerate(tool_calls)
             ]
             results = await _execute_tools_parallel(parsed_calls)
 
@@ -114,6 +119,7 @@ async def run_agent(task: str) -> list[dict]:
 
         break  # outer loop: no follow-up support yet
 
+    emit({"type": "agent_end", "total_iterations": iteration, "status": "ok"})
     return messages
 
 
@@ -130,13 +136,21 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
     """
     name = tool_call["name"]
     args = tool_call["input"]
-    print(f"  [executing {name} {args}]")
+    # tool_call_start was already emitted during streaming; no event here.
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
+        emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+              "tool_call_id": tool_call["id"], "name": name,
+              "content": f"Unknown tool: {name}", "is_error": True, "chars": 0})
         return ToolResult(tool_call["id"], name, f"Unknown tool: {name}", is_error=True)
     try:
         result = await fn(**args)
     except Exception as e:
+        emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+              "tool_call_id": tool_call["id"], "name": name,
+              "content": f"Error: {e}", "is_error": True, "chars": 0})
         return ToolResult(tool_call["id"], name, f"Error: {e}", is_error=True)
-    print(f"  [✓ {name}: {len(result)} chars]")
+    emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+          "tool_call_id": tool_call["id"], "name": name,
+          "content": result, "is_error": False, "chars": len(result)})
     return ToolResult(tool_call["id"], name, result)

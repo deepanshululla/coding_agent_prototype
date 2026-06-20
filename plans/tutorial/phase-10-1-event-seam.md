@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-10-1-event-seam
 
 # Phase 10.1 — The `emit()` Seam
 
