@@ -8,7 +8,6 @@ agent's print() output — carries no "[executing" or "[✓" markers.
 
 import asyncio
 import io
-import json
 
 import pytest
 from loguru import logger
@@ -23,7 +22,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 
@@ -87,8 +86,7 @@ def test_tool_lifecycle_events_on_stderr_not_stdout(monkeypatch, tmp_path, capsy
     turn1 = [
         _chunk(
             tool_calls=[
-                _tc(0, id="call_abc", name="read_file",
-                    arguments=f'{{"path": "{target}"}}'),
+                _tc(0, id="call_abc", name="read_file", arguments=f'{{"path": "{target}"}}'),
             ],
         ),
         _chunk(finish_reason="tool_calls"),

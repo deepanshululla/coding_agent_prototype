@@ -16,9 +16,7 @@ def _git_init(path: Path) -> None:
 def test_loads_agents_md_from_cwd(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENT_INSTRUCTIONS_FILES", raising=False)
     _git_init(tmp_path)
-    (tmp_path / "AGENTS.md").write_text(
-        "Never commit .env files or credentials", encoding="utf-8"
-    )
+    (tmp_path / "AGENTS.md").write_text("Never commit .env files or credentials", encoding="utf-8")
     result = project_instructions.load_project_instructions(str(tmp_path))
     assert "Never commit .env files or credentials" in result
     assert "## Project instructions (from AGENTS.md)" in result

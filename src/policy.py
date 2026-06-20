@@ -22,8 +22,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Literal
 
-
 # ── Decision ─────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class Decision:
@@ -32,6 +32,7 @@ class Decision:
 
 
 # ── Rules ────────────────────────────────────────────────────────────────────
+
 
 class Rule(ABC):
     @abstractmethod
@@ -48,6 +49,7 @@ class ReadToolRule(Rule):
     table in the Permission Modes design doc). Placed at the front of each rule
     set so reads short-circuit before any default outcome applies.
     """
+
     READ_TOOLS = {"read_file", "grep", "find_files", "list_dir"}
 
     def evaluate(self, tool_name: str, args: dict) -> Decision | None:
@@ -58,6 +60,7 @@ class ReadToolRule(Rule):
 
 class ReadOnlyRule(Rule):
     """Deny all write and execute tools unconditionally."""
+
     WRITE_EXECUTE = {"bash", "write_file", "edit_file"}
 
     def evaluate(self, tool_name: str, args: dict) -> Decision | None:
@@ -76,10 +79,11 @@ class CommandAllowlistRule(Rule):
         if tool_name != "bash":
             return None
         from allowlist import check_command
+
         verdict = check_command(args.get("command", ""))
         if not verdict.allowed:
             return Decision("deny", verdict.reason)
-        return Decision("allow")   # allowlisted — no need to ask
+        return Decision("allow")  # allowlisted — no need to ask
 
 
 class PathRestrictionRule(Rule):
@@ -100,10 +104,11 @@ class PathRestrictionRule(Rule):
                 )
         except ValueError:
             return Decision("deny", "could not resolve path")
-        return None   # path is safe; let other rules decide
+        return None  # path is safe; let other rules decide
 
 
 # ── Engine ───────────────────────────────────────────────────────────────────
+
 
 class PolicyEngine:
     """Evaluate a tool call against an ordered list of rules.
@@ -128,8 +133,8 @@ class PolicyEngine:
         if mode == "read-only":
             return cls(
                 rules=[
-                    ReadToolRule(),    # reads run freely
-                    ReadOnlyRule(),    # writes/execs denied
+                    ReadToolRule(),  # reads run freely
+                    ReadOnlyRule(),  # writes/execs denied
                 ],
                 default="deny",
             )
@@ -137,21 +142,21 @@ class PolicyEngine:
         if mode == "auto":
             return cls(
                 rules=[
-                    ReadToolRule(),           # reads run freely
+                    ReadToolRule(),  # reads run freely
                     CommandAllowlistRule(),
                     PathRestrictionRule(),
                 ],
-                default="deny",   # auto still denies unknown/unlisted calls
+                default="deny",  # auto still denies unknown/unlisted calls
             )
 
         # mode == "ask" (default)
         return cls(
             rules=[
-                ReadToolRule(),           # reads run freely
-                CommandAllowlistRule(),   # allowlisted bash calls run without prompting
-                PathRestrictionRule(),    # out-of-root writes are denied without prompting
+                ReadToolRule(),  # reads run freely
+                CommandAllowlistRule(),  # allowlisted bash calls run without prompting
+                PathRestrictionRule(),  # out-of-root writes are denied without prompting
             ],
-            default="ask",   # everything else goes to the user
+            default="ask",  # everything else goes to the user
         )
 
     def check(self, tool_name: str, args: dict) -> Decision:

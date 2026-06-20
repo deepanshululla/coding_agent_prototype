@@ -30,7 +30,8 @@ def build_system_prompt(
     # folder. The model calls load_skill to pull a full body in on demand.
     menu = skills_menu()
 
-    return f"""You are an expert coding assistant running inside a terminal agent harness.
+    return (
+        f"""You are an expert coding assistant running inside a terminal agent harness.
 You help users by reading files, executing shell commands, editing code, and writing new files.
 
 ## Available Tools
@@ -57,4 +58,6 @@ You help users by reading files, executing shell commands, editing code, and wri
 Working directory: {cwd}
 Today's date: {today}
 
-{extra}""".rstrip() + "\n"
+{extra}""".rstrip()
+        + "\n"
+    )

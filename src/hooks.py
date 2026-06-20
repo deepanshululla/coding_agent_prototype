@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # JSONL log path, relative to the cwd. Could be made configurable via an env
@@ -26,7 +26,7 @@ ALWAYS_ALLOW = frozenset({"read_file", "list_dir", "grep", "find_files"})
 async def log_after_tool_call(name: str, args: dict, result: str) -> str:
     """Log every tool call to a JSONL file; return the result unchanged."""
     entry = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "tool": name,
         "args": args,
         "result_len": len(result),
@@ -49,7 +49,5 @@ async def confirm_before_tool_call(name: str, args: dict) -> bool:
         return True
     loop = asyncio.get_event_loop()
     formatted = ", ".join(f"{k}={v!r}" for k, v in args.items())
-    answer = await loop.run_in_executor(
-        None, input, f"\n  Allow {name}({formatted})? [y/N] "
-    )
+    answer = await loop.run_in_executor(None, input, f"\n  Allow {name}({formatted})? [y/N] ")
     return answer.strip().lower() == "y"

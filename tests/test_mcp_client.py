@@ -202,10 +202,7 @@ async def test_load_mcp_servers_registers_and_returns_session(
     monkeypatch, tmp_path, clean_registry
 ):
     config = tmp_path / "mcp.json"
-    config.write_text(
-        '{"mcpServers": {"filesystem": '
-        '{"command": "noop", "args": [], "env": {}}}}'
-    )
+    config.write_text('{"mcpServers": {"filesystem": {"command": "noop", "args": [], "env": {}}}}')
     monkeypatch.setenv("AGENT_MCP_CONFIG", str(config))
 
     closed = {"value": False}

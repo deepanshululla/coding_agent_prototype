@@ -25,10 +25,19 @@ SHELL_METACHARACTERS = (";", "&", "|", "$", "`", ">", "<", "(", ")", "\n", "\\")
 # Default allowed programs. Read-only and project-safe.
 # Override with AGENT_BASH_ALLOWLIST="ls,cat,git,pytest" (csv).
 DEFAULT_ALLOWED_PROGRAMS: set[str] = {
-    "ls", "cat", "head", "tail", "wc", "echo",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "wc",
+    "echo",
     "git",
-    "python", "python3", "pytest",
-    "grep", "rg", "find",
+    "python",
+    "python3",
+    "pytest",
+    "grep",
+    "rg",
+    "find",
 }
 
 # Per-program subcommand allowlists (restrict dangerous subcommands).

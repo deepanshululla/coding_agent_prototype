@@ -30,7 +30,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 
@@ -47,9 +47,7 @@ def _scripted_turns(target):
         _chunk(content="Let me read "),
         _chunk(content="that file."),
         _chunk(
-            tool_calls=[
-                _tc(0, id="call_x", name="read_file", arguments=f'{{"path": "{target}"}}')
-            ]
+            tool_calls=[_tc(0, id="call_x", name="read_file", arguments=f'{{"path": "{target}"}}')]
         ),
         _chunk(finish_reason="tool_calls"),
     ]
@@ -65,7 +63,6 @@ def test_stdout_renderer_is_byte_for_byte_identical(monkeypatch, tmp_path, capsy
     events, proving AGENT_UI=stdout reproduces the original plain-text output."""
     target = tmp_path / "hello.txt"
     target.write_text("hello from the file")
-    file_chars = len("hello from the file")
 
     turns = _scripted_turns(target)
     monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
@@ -81,11 +78,11 @@ def test_stdout_renderer_is_byte_for_byte_identical(monkeypatch, tmp_path, capsy
     # on stderr, so stdout now carries only the model's streamed text plus the
     # per-turn newline. A redirect of stdout captures pure model output.
     expected = (
-        "Let me read "          # text_delta
-        "that file."            # text_delta
-        "\n"                    # turn_end (newline after streamed turn)
+        "Let me read "  # text_delta
+        "that file."  # text_delta
+        "\n"  # turn_end (newline after streamed turn)
         "The file says hello."  # text_delta (turn 2)
-        "\n"                    # turn_end (turn 2)
+        "\n"  # turn_end (turn 2)
     )
     assert captured == expected
     assert "▸" not in captured
@@ -107,6 +104,7 @@ def test_unknown_tool_emits_error_tool_call_end(monkeypatch, capsys):
     ToolResult and the logger, not stdout."""
     events: list[dict] = []
     import renderer
+
     monkeypatch.setattr(renderer, "emit", events.append)
     monkeypatch.setattr(agent, "emit", events.append)
 

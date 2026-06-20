@@ -31,7 +31,6 @@ from mcp.client.streamable_http import streamablehttp_client
 
 from tools import TOOL_REGISTRY, TOOLS_SCHEMA
 
-
 # ── Schema conversion ─────────────────────────────────────────────────────────
 
 
@@ -145,9 +144,7 @@ async def _connect_session(server_cfg: dict):
     """
     stack = AsyncExitStack()
     if "url" in server_cfg:
-        read, write, *_ = await stack.enter_async_context(
-            streamablehttp_client(server_cfg["url"])
-        )
+        read, write, *_ = await stack.enter_async_context(streamablehttp_client(server_cfg["url"]))
     else:
         params = StdioServerParameters(
             command=server_cfg["command"],
@@ -185,9 +182,7 @@ async def load_mcp_servers() -> list:
         try:
             session = await _connect_session(server_cfg)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to connect to MCP server '{server_name}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to connect to MCP server '{server_name}': {e}") from e
 
         tools_result = await session.list_tools()
         _register_mcp_tools(session, server_name, tools_result.tools)

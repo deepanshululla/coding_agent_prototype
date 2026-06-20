@@ -23,19 +23,16 @@ Scenario: Vim-style modal keybindings and theme env var changes colors
 
 import asyncio
 
+from rich.text import Text
+
 import agent
 from provider import _chunk, _tc
-import tui.emit
 from tui.app import AgentApp
 from tui.components.input_box import InputBox
 from tui.components.status_bar import StatusBar
 from tui.components.tool_panel import ToolPanel
-from tui.components.transcript import TranscriptPane
 from tui.emit import set_app
 from tui.themes import THEMES, get_theme
-
-from rich.text import Text
-
 
 # ── Unit tests: get_theme ────────────────────────────────────────────────────
 
@@ -66,7 +63,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 
@@ -80,9 +77,9 @@ class ScriptedLLM:
 def _tool_then_text_turns(path: str):
     return [
         [
-            _chunk(tool_calls=[
-                _tc(0, id="c0", name="read_file", arguments=f'{{"path": "{path}"}}')
-            ]),
+            _chunk(
+                tool_calls=[_tc(0, id="c0", name="read_file", arguments=f'{{"path": "{path}"}}')]
+            ),
             _chunk(finish_reason="tool_calls"),
         ],
         [
@@ -101,14 +98,12 @@ def test_cancel_event_stops_inner_loop_and_emits_cancelled(monkeypatch, tmp_path
     call_count = 0
 
     class CountingLLM(ScriptedLLM):
-        def __call__(self, messages, system_prompt):
+        def __call__(self, messages, system_prompt, model=None):
             nonlocal call_count
             call_count += 1
             return super().__call__(messages, system_prompt)
 
-    monkeypatch.setattr(
-        agent, "stream_response", CountingLLM(_tool_then_text_turns(str(target)))
-    )
+    monkeypatch.setattr(agent, "stream_response", CountingLLM(_tool_then_text_turns(str(target))))
 
     events: list[dict] = []
     monkeypatch.setattr(agent, "emit", events.append)
@@ -129,9 +124,7 @@ def test_cancel_event_none_preserves_normal_run(monkeypatch, tmp_path):
     """With cancel_event=None the run proceeds normally and emits agent_end."""
     target = tmp_path / "hello.txt"
     target.write_text("hello world")
-    monkeypatch.setattr(
-        agent, "stream_response", ScriptedLLM(_tool_then_text_turns(str(target)))
-    )
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(_tool_then_text_turns(str(target))))
     events: list[dict] = []
     monkeypatch.setattr(agent, "emit", events.append)
 
@@ -155,7 +148,7 @@ def _status_text(bar: StatusBar) -> Text | str:
 def test_app_starts_in_normal_mode():
     async def _run():
         app = AgentApp("noop")
-        async with app.run_test() as pilot:
+        async with app.run_test():
             assert app.mode == "normal"
 
     asyncio.run(_run())
@@ -190,7 +183,7 @@ def test_escape_returns_to_normal():
 def test_check_action_blocks_scroll_in_insert_mode():
     async def _run():
         app = AgentApp("noop")
-        async with app.run_test() as pilot:
+        async with app.run_test():
             app.mode = "insert"
             assert app.check_action("scroll_down", None) is False
             assert app.check_action("scroll_up", None) is False
@@ -222,7 +215,7 @@ def test_submit_queues_message_and_returns_to_normal():
 def test_ctrl_c_sets_cancel_event():
     async def _run():
         app = AgentApp("noop")
-        async with app.run_test() as pilot:
+        async with app.run_test():
             assert not app.cancel_event.is_set()
             app.action_cancel_turn()
             assert app.cancel_event.is_set()
@@ -233,7 +226,7 @@ def test_ctrl_c_sets_cancel_event():
 def test_default_theme_is_dark():
     async def _run():
         app = AgentApp("noop")
-        async with app.run_test() as pilot:
+        async with app.run_test():
             assert app.theme_dict["tool_ok"] == "bright_green"
             assert app.query_one(ToolPanel)._theme["tool_ok"] == "bright_green"
             assert app.query_one(StatusBar)._color == "grey70"
@@ -266,6 +259,7 @@ def test_light_theme_changes_widget_colors(monkeypatch):
 
 def test_cancelled_event_routes_to_status_bar(monkeypatch, tmp_path):
     """agent_cancelled routed through handle_agent_event shows 'cancelled'."""
+
     async def _run():
         app = AgentApp("noop")
         set_app(app)

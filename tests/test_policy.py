@@ -10,8 +10,8 @@ from policy import (
     ReadToolRule,
 )
 
-
 # ── ReadToolRule ─────────────────────────────────────────────────────────────
+
 
 def test_read_tool_rule_allows_read_tools():
     rule = ReadToolRule()
@@ -26,6 +26,7 @@ def test_read_tool_rule_passes_write_tools():
 
 
 # ── ReadOnlyRule ─────────────────────────────────────────────────────────────
+
 
 def test_readonly_denies_write_file():
     d = ReadOnlyRule().evaluate("write_file", {"path": "x.py", "content": "y"})
@@ -46,6 +47,7 @@ def test_readonly_passes_read_tools():
 
 # ── CommandAllowlistRule ─────────────────────────────────────────────────────
 
+
 def test_allowlist_rule_ignores_non_bash():
     assert CommandAllowlistRule().evaluate("write_file", {"path": "x"}) is None
 
@@ -64,6 +66,7 @@ def test_allowlist_rule_denies_unlisted_command():
 
 
 # ── PathRestrictionRule ──────────────────────────────────────────────────────
+
 
 def test_path_rule_ignores_non_write_tools():
     rule = PathRestrictionRule(allowed_root=os.getcwd())
@@ -87,6 +90,7 @@ def test_path_rule_denies_outside_root(tmp_path):
 
 # ── PolicyEngine.check (ordering + default) ──────────────────────────────────
 
+
 def test_engine_first_non_none_rule_wins():
     engine = PolicyEngine(rules=[ReadOnlyRule()], default="allow")
     d = engine.check("write_file", {"path": "x"})
@@ -101,6 +105,7 @@ def test_engine_falls_through_to_default():
 
 
 # ── PolicyEngine.from_env (each mode) ────────────────────────────────────────
+
 
 def test_from_env_read_only(monkeypatch):
     monkeypatch.setenv("AGENT_PERMISSION_MODE", "read-only")
@@ -144,6 +149,7 @@ def test_from_env_ask_denies_out_of_root_write(monkeypatch, tmp_path):
 # the user typing "n" denies write_file. The write_file function is never
 # called in either case.
 
+
 @pytest.mark.asyncio
 async def test_bdd_read_only_denies_write_file(monkeypatch):
     import agent
@@ -157,13 +163,10 @@ async def test_bdd_read_only_denies_write_file(monkeypatch):
         return "wrote"
 
     monkeypatch.setitem(agent.TOOL_REGISTRY, "write_file", fake_write)
-    monkeypatch.setattr(
-        agent, "_policy", PE(rules=[ReadOnlyRule()], default="deny")
-    )
+    monkeypatch.setattr(agent, "_policy", PE(rules=[ReadOnlyRule()], default="deny"))
 
     result = await agent._execute_one_tool(
-        {"id": "t1", "index": 0, "name": "write_file",
-         "input": {"path": "x.py", "content": "y"}}
+        {"id": "t1", "index": 0, "name": "write_file", "input": {"path": "x.py", "content": "y"}}
     )
 
     assert result.is_error is True
@@ -187,15 +190,12 @@ async def test_bdd_ask_mode_user_denies_write_file(monkeypatch):
 
     monkeypatch.setitem(agent.TOOL_REGISTRY, "write_file", fake_write)
     # ask-mode engine: write inside cwd hits no rule → default ask
-    monkeypatch.setattr(
-        agent, "_policy", PE(rules=[CAR(), PRR()], default="ask")
-    )
+    monkeypatch.setattr(agent, "_policy", PE(rules=[CAR(), PRR()], default="ask"))
     # user types "n" at the prompt
     monkeypatch.setattr("builtins.input", lambda *a, **k: "n")
 
     result = await agent._execute_one_tool(
-        {"id": "t2", "index": 0, "name": "write_file",
-         "input": {"path": "x.py", "content": "y"}}
+        {"id": "t2", "index": 0, "name": "write_file", "input": {"path": "x.py", "content": "y"}}
     )
 
     assert result.is_error is True
@@ -218,14 +218,11 @@ async def test_bdd_ask_mode_user_approves_write_file(monkeypatch):
         return "wrote ok"
 
     monkeypatch.setitem(agent.TOOL_REGISTRY, "write_file", fake_write)
-    monkeypatch.setattr(
-        agent, "_policy", PE(rules=[CAR(), PRR()], default="ask")
-    )
+    monkeypatch.setattr(agent, "_policy", PE(rules=[CAR(), PRR()], default="ask"))
     monkeypatch.setattr("builtins.input", lambda *a, **k: "y")
 
     result = await agent._execute_one_tool(
-        {"id": "t3", "index": 0, "name": "write_file",
-         "input": {"path": "x.py", "content": "y"}}
+        {"id": "t3", "index": 0, "name": "write_file", "input": {"path": "x.py", "content": "y"}}
     )
 
     assert result.is_error is False

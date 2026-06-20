@@ -16,14 +16,14 @@ Scenario: Tool panel shows spinner and resolves on completion
 
 import asyncio
 
+from rich.text import Text
+
 import agent
-from provider import _chunk, _tc
 import tui.emit
+from provider import _chunk, _tc
 from tui.app import AgentApp
 from tui.components.tool_panel import ToolPanel
 from tui.emit import set_app
-
-from rich.text import Text
 
 
 def _cell(panel: ToolPanel, index: int, column: str) -> str:
@@ -116,7 +116,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 
@@ -131,9 +131,9 @@ def _tool_then_text_turns(path: str):
     """Turn 1 calls read_file on path; turn 2 streams a plain text reply."""
     return [
         [
-            _chunk(tool_calls=[
-                _tc(0, id="c0", name="read_file", arguments=f'{{"path": "{path}"}}')
-            ]),
+            _chunk(
+                tool_calls=[_tc(0, id="c0", name="read_file", arguments=f'{{"path": "{path}"}}')]
+            ),
             _chunk(finish_reason="tool_calls"),
         ],
         [

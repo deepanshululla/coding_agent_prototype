@@ -17,8 +17,8 @@ def _int(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
-    except ValueError:
-        raise SystemExit(f"{name} must be an integer, got {raw!r}")
+    except ValueError as err:
+        raise SystemExit(f"{name} must be an integer, got {raw!r}") from err
 
 
 def _csv(name: str, default: list[str]) -> list[str]:

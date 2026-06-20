@@ -6,6 +6,10 @@ description: Swap models and providers by changing the MODEL string or setting U
 
 # Layer 13.6 — Custom Models & Providers
 
+:::note Implemented
+This step is implemented on branch `step/phase-13-6-models-and-providers` (plan: `plans/tutorial/phase-13-6-models-and-providers.md`).
+:::
+
 :::note Starting point
 Layer 13.5 complete: MCP servers connect at startup and their tools merge into `TOOLS_SCHEMA`/`TOOL_REGISTRY`. The test suite passes.
 :::

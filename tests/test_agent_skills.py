@@ -13,7 +13,6 @@ import prompts
 import skills
 import tools
 
-
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -49,7 +48,7 @@ def test_parse_skill_optional_fields(tmp_path):
         tmp_path,
         "demo",
         "name: demo\ndescription: d\nlicense: MIT\n"
-        'metadata:\n  author: you\nallowed-tools: read_file',
+        "metadata:\n  author: you\nallowed-tools: read_file",
     )
     skill = skills._parse_skill(md)
     assert skill is not None

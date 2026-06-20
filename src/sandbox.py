@@ -78,8 +78,7 @@ async def run_in_worktree(
                 check=False,
             )
             raise RuntimeError(
-                f"Agent made no commits in worktree {worktree_path}; "
-                "worktree removed."
+                f"Agent made no commits in worktree {worktree_path}; worktree removed."
             )
 
     return worktree_path
@@ -106,7 +105,6 @@ class WorktreeSandbox:
         root = str(Path(self.root).resolve())
         if not str(resolved).startswith(root):
             raise PermissionError(
-                f"Path escape attempt: {path!r} -> {resolved} "
-                f"(outside sandbox root {self.root})"
+                f"Path escape attempt: {path!r} -> {resolved} (outside sandbox root {self.root})"
             )
         return resolved
