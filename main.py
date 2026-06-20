@@ -57,6 +57,17 @@ def main() -> None:
         print("No task provided.")
         return
 
+    # Fold project instructions (AGENTS.md / CLAUDE.md, Layer 13.1) into the
+    # system prompt so the agent starts each session briefed on repo conventions.
+    from project_instructions import load_project_instructions
+    from prompts import build_system_prompt
+
+    cwd = os.getcwd()
+    system_prompt = build_system_prompt(
+        cwd=cwd,
+        extra=load_project_instructions(cwd),
+    )
+
     if os.getenv("AGENT_UI", "stdout") == "tui":
         from tui import run
 
@@ -64,7 +75,7 @@ def main() -> None:
     else:
         from agent import run_agent
 
-        asyncio.run(run_agent(task))
+        asyncio.run(run_agent(task, system_prompt=system_prompt))
 
 
 if __name__ == "__main__":

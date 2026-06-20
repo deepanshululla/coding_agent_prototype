@@ -36,6 +36,7 @@ async def run_agent(
     task: str,
     pending_messages: list[dict] | None = None,
     cancel_event: asyncio.Event | None = None,
+    system_prompt: str | None = None,
 ) -> list[dict]:
     """Run the agent on task and return the final message history.
 
@@ -49,6 +50,11 @@ async def run_agent(
     When None (the default), a fresh empty list is used so existing callers and
     tests are unaffected.
 
+    system_prompt, when provided (Phase 13.1), is the fully-built system prompt
+    (e.g. carrying project instructions folded in via build_system_prompt's
+    extra=...). When None (the default) it is built here with no extra, so
+    existing callers and tests are unaffected.
+
     cancel_event, when provided (Phase 10.5), is an asyncio.Event the TUI sets
     on Ctrl-C. It is checked at the top of each inner-loop pass; if set, it is
     cleared, an "agent_cancelled" event is emitted, and the inner loop breaks
@@ -57,7 +63,8 @@ async def run_agent(
     is skipped, preserving backward compatibility.
     """
     logger.info("agent starting: {!r}", task)
-    system_prompt = build_system_prompt()
+    if system_prompt is None:
+        system_prompt = build_system_prompt()
     messages: list[dict] = [{"role": "user", "content": task}]
     if pending_messages is None:
         pending_messages = []

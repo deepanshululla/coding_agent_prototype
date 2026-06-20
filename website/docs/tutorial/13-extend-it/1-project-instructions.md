@@ -6,6 +6,10 @@ description: Load AGENTS.md / CLAUDE.md from the repo root into the system promp
 
 # Layer 13.1 — Project Instructions (AGENTS.md)
 
+:::note Implemented
+This step is implemented on branch `step/phase-13-1-project-instructions` (plan: `plans/tutorial/phase-13-1-project-instructions.md`).
+:::
+
 :::note Starting point
 The hardened agent from Phase 12: `src/agent.py`, `src/tools.py`, `src/provider.py`, `src/prompts.py`, `src/types_.py`, `main.py`, and a passing test suite. The agent runs reliably but has no awareness of project-specific conventions — every repo looks the same to it.
 :::

@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-13-1-project-instructions
 
 # Phase 13.1 — Project Instructions (AGENTS.md)
 
