@@ -12,16 +12,25 @@ from types_ import ToolResult
 MAX_ITERATIONS = 30
 
 
-async def run_agent(task: str) -> list[dict]:
+async def run_agent(
+    task: str, pending_messages: list[dict] | None = None
+) -> list[dict]:
     """Run the agent on task and return the final message history.
 
     Phase 4: text + one tool. The inner loop streams a model turn, appends the
     assistant message (carrying tool_calls when present), and — if the model
     requested tools — dispatches them and injects each result as a role:"tool"
     message before looping back to the model. A plain text turn ends the loop.
+
+    pending_messages, when provided (Phase 10.4), is a shared list that the TUI
+    input box appends to; the outer loop reads from it for steering follow-ups.
+    When None (the default), a fresh empty list is used so existing callers and
+    tests are unaffected.
     """
     system_prompt = build_system_prompt()
     messages: list[dict] = [{"role": "user", "content": task}]
+    if pending_messages is None:
+        pending_messages = []
 
     # OUTER LOOP: re-enters if follow-up messages arrive. Runs once for now.
     while True:

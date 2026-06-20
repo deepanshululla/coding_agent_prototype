@@ -6,6 +6,10 @@ description: Add an input box for submitting tasks and a status bar showing the 
 
 # Layer 10.4 — Input & Status Bar
 
+:::note Implemented
+This step is implemented on branch `step/phase-10-4-input-status` (plan: `plans/tutorial/phase-10-4-input-status.md`).
+:::
+
 :::note Starting point
 The transcript + tool panel app from Layer 10.3. `AGENT_UI=tui` shows a two-region layout. The app has no way to submit a task interactively and no ambient status information.
 :::
@@ -64,18 +68,21 @@ class StatusBar(Static):
 
     def set_iteration(self, n: int) -> None:
         self._iter = n
-        self._render()
+        self._refresh_label()
 
     def set_done(self, total: int) -> None:
         self._iter = total
         self._done = True
-        self._render()
+        self._refresh_label()
 
     def set_cancelled(self) -> None:
         self._cancelled = True
-        self._render()
+        self._refresh_label()
 
-    def _render(self) -> None:
+    def _refresh_label(self) -> None:
+        # NB: named _refresh_label, not _render — Textual's Widget._render() is a
+        # reserved internal that must return a Visual; overriding it with a
+        # None-returning method crashes the compositor.
         elapsed = int(time.monotonic() - self._start)
         if self._cancelled:
             state = "cancelled"
@@ -89,7 +96,7 @@ class StatusBar(Static):
 ### Step 2 — The `InputBox` widget (`src/tui/components/input_box.py`)
 
 The input box captures Enter. When the user submits text it:
-1. Posts an `InputBox.Submitted` message (Textual's event bus).
+1. Posts an `InputBox.TextSubmitted` message (Textual's event bus).
 2. Clears itself.
 
 The `AgentApp` handles the message and pushes the text into `pending_messages`.
@@ -104,7 +111,7 @@ from textual.widgets import Input
 class InputBox(Input):
     """Single-line input for submitting a task or a steering follow-up.
 
-    Pressing Enter posts InputBox.Submitted. The AgentApp handler appends
+    Pressing Enter posts InputBox.TextSubmitted. The AgentApp handler appends
     the text to pending_messages so the outer loop can pick it up.
     """
 
@@ -116,16 +123,25 @@ class InputBox(Input):
     }
     """
 
-    class Submitted(Message):
+    class TextSubmitted(Message):
         def __init__(self, text: str) -> None:
             super().__init__()
             self.text = text
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.value.strip():
-            self.post_message(self.Submitted(event.value.strip()))
+            self.post_message(self.TextSubmitted(event.value.strip()))
             self.clear()
 ```
+
+:::warning Don't shadow `Input.Submitted`
+`Input` already defines and posts `Input.Submitted` internally via
+`self.Submitted(self, value, result)`. If the subclass defines its own
+`Submitted`, that call resolves to the subclass message and crashes with an
+arity mismatch. We name our message `TextSubmitted`, listen to the base
+`Input.Submitted`, and re-emit. The auto-wired handler name follows: it becomes
+`on_input_box_text_submitted`.
+:::
 
 ### Step 3 — Update `AgentApp` for the full four-region layout (`src/tui/app.py`)
 
@@ -175,7 +191,7 @@ class AgentApp(App):
         # steering messages from the input box.
         asyncio.create_task(run_agent(self.task, self._pending))
 
-    def on_input_box_submitted(self, message: InputBox.Submitted) -> None:
+    def on_input_box_text_submitted(self, message: InputBox.TextSubmitted) -> None:
         """Push the submitted text into pending_messages."""
         self._pending.append({"role": "user", "content": message.text})
         # Echo the user message in the transcript so they can see it.

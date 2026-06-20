@@ -1,0 +1,66 @@
+# src/tui/components/status_bar.py
+
+"""The status bar: a single ambient line showing model, iteration, elapsed time.
+
+Updated by turn_end (advance the iteration counter) and agent_end (show 'done').
+Reads the model name from the AGENT_MODEL env var for display only — no model
+selection logic lives here.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+
+from textual.widgets import Static
+
+
+class StatusBar(Static):
+    """Ambient status: model name, iteration N/MAX, elapsed time.
+
+    Updated by turn_end (advance counter) and agent_end (show 'done').
+    """
+
+    DEFAULT_CSS = """
+    StatusBar {
+        height: 1;
+        background: $panel;
+        color: $text-muted;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, max_iterations: int = 30) -> None:
+        super().__init__()
+        self._model = os.getenv("AGENT_MODEL", "claude-sonnet-4-5")
+        self._max = max_iterations
+        self._iter = 0
+        self._start = time.monotonic()
+        self._done = False
+        self._cancelled = False
+
+    def set_iteration(self, n: int) -> None:
+        self._iter = n
+        self._refresh_label()
+
+    def set_done(self, total: int) -> None:
+        self._iter = total
+        self._done = True
+        self._refresh_label()
+
+    def set_cancelled(self) -> None:
+        self._cancelled = True
+        self._refresh_label()
+
+    def _refresh_label(self) -> None:
+        # NB: named _refresh_label, NOT _render — Textual's Widget._render() is a
+        # reserved internal that must return a Visual; overriding it with a
+        # None-returning method crashes the compositor.
+        elapsed = int(time.monotonic() - self._start)
+        if self._cancelled:
+            state = "cancelled"
+        elif self._done:
+            state = f"done ({self._iter} iters)"
+        else:
+            state = f"iter {self._iter}/{self._max}"
+        self.update(f" {self._model}  •  {state}  •  {elapsed}s")
