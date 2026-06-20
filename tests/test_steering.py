@@ -120,6 +120,30 @@ async def test_steering_continues_without_replaying_prior_tool_calls(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_empty_initial_task_waits_for_steering(monkeypatch):
+    """An empty initial task (TUI launched idle) must not consume a model turn —
+    the agent waits for the first steering message, then runs it as turn one."""
+    # Only ONE turn is scripted; if the empty task wrongly called the model, the
+    # second (real) call would IndexError. It must serve the steering message.
+    turns = [[_chunk(content="handled"), _chunk(finish_reason="stop")]]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
+
+    injected = {"n": 0}
+
+    async def get_steering_messages():
+        if injected["n"] == 0:
+            injected["n"] += 1
+            return [{"role": "user", "content": "do the thing"}]
+        return []
+
+    messages = await agent.run_agent("", get_steering_messages=get_steering_messages)
+
+    # No empty user turn was created; the first message is the steering one.
+    assert messages[0] == {"role": "user", "content": "do the thing"}
+    assert messages[-1]["content"] == "handled"
+
+
+@pytest.mark.asyncio
 async def test_no_steering_callable_runs_outer_loop_once(monkeypatch):
     """With no get_steering_messages, the outer loop runs exactly once."""
     turns = [[_chunk(content="hi"), _chunk(finish_reason="stop")]]

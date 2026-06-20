@@ -25,6 +25,11 @@ def set_app(app: AgentApp) -> None:
     _app = app
 
 
+def get_app() -> AgentApp | None:
+    """Return the registered live app, or None if none has been set."""
+    return _app
+
+
 def emit(event: dict) -> None:
     """Route an agent event to the running TUI app."""
     if _app is None:

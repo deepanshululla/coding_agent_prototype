@@ -38,19 +38,40 @@ class StatusBar(Static):
         self._start = time.monotonic()
         self._done = False
         self._cancelled = False
+        self._waiting = False
+        self._error: str | None = None
+        self._permission: str | None = None
         self._color = (theme or {}).get("status", "grey70")
 
     def set_iteration(self, n: int) -> None:
         self._iter = n
+        # A new turn means the agent is active again, not idle.
+        self._waiting = False
         self._refresh_label()
 
     def set_done(self, total: int) -> None:
         self._iter = total
         self._done = True
+        self._waiting = False
         self._refresh_label()
 
     def set_cancelled(self) -> None:
         self._cancelled = True
+        self._refresh_label()
+
+    def set_waiting(self) -> None:
+        """Show that the agent finished a turn and is idle awaiting input."""
+        self._waiting = True
+        self._refresh_label()
+
+    def set_error(self, message: str) -> None:
+        """Flag that the run failed; the message is rendered (clipped) here."""
+        self._error = message
+        self._refresh_label()
+
+    def set_permission_mode(self, label: str) -> None:
+        """Show the active permission mode (e.g. 'auto', 'edit', 'plan')."""
+        self._permission = label
         self._refresh_label()
 
     def _refresh_label(self) -> None:
@@ -60,11 +81,17 @@ class StatusBar(Static):
         from rich.text import Text
 
         elapsed = int(time.monotonic() - self._start)
-        if self._cancelled:
+        if self._error is not None:
+            clipped = self._error if len(self._error) <= 60 else self._error[:57] + "..."
+            state = f"error: {clipped}"
+        elif self._cancelled:
             state = "cancelled"
+        elif self._waiting:
+            state = "waiting for input"
         elif self._done:
             state = f"done ({self._iter} iters)"
         else:
             state = f"iter {self._iter}/{self._max}"
-        line = f" {self._model}  •  {state}  •  {elapsed}s"
+        perm = f"  •  {self._permission}" if self._permission else ""
+        line = f" {self._model}{perm}  •  {state}  •  {elapsed}s"
         self.update(Text(line, style=self._color))

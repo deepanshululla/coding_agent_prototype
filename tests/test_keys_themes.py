@@ -142,6 +142,125 @@ def _status_text(bar: StatusBar) -> Text | str:
     return bar._Static__content  # ty: ignore[unresolved-attribute]  (Textual private)
 
 
+# ── Permission-mode cycling ──────────────────────────────────────────────────
+
+
+def test_shift_tab_cycles_permission_mode(monkeypatch):
+    """shift+tab cycles auto -> edit -> plan -> auto, and the chosen mode is
+    pushed to provider.CLI_PERMISSION_MODE so the next CLI turn picks it up."""
+    import provider
+
+    monkeypatch.setattr(provider, "CLI_PERMISSION_MODE", "bypassPermissions")
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.permission_mode == "bypassPermissions"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.permission_mode == "acceptEdits"
+            assert provider.CLI_PERMISSION_MODE == "acceptEdits"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.permission_mode == "plan"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.permission_mode == "bypassPermissions"  # wraps around
+
+    asyncio.run(_run())
+
+
+def test_status_bar_shows_permission_mode():
+    """The status bar renders the friendly permission-mode label."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            bar = app.query_one(StatusBar)
+            bar.set_permission_mode("edit")
+            await pilot.pause()
+            content = _status_text(bar)
+            text = content.plain if isinstance(content, Text) else str(content)
+            assert "edit" in text
+
+    asyncio.run(_run())
+
+
+# ── Quit bindings ────────────────────────────────────────────────────────────
+
+
+def test_q_does_not_quit_in_normal_mode():
+    """Plain q must NOT quit (too easy to hit by accident) — only ctrl+q and the
+    exit words quit."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.mode == "normal"
+            await pilot.press("q")
+            await pilot.pause()
+            assert not app._quitting
+            assert app.is_running
+
+    asyncio.run(_run())
+
+
+def test_q_in_insert_mode_types_instead_of_quitting():
+    """In INSERT mode q is typed into the input box, not treated as quit."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            await pilot.press("i")  # enter INSERT
+            await pilot.pause()
+            assert app.mode == "insert"
+            await pilot.press("q")
+            await pilot.pause()
+            assert not app._quitting
+            assert "q" in app.query_one(InputBox).value
+
+    asyncio.run(_run())
+
+
+def test_ctrl_q_quits_from_any_mode():
+    """ctrl+q triggers the quit path even while in INSERT mode."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            await pilot.press("i")  # enter INSERT
+            await pilot.pause()
+            await pilot.press("ctrl+q")
+            assert app._quitting
+
+    asyncio.run(_run())
+
+
+def test_typing_exit_quits():
+    """Submitting 'exit' in the input box quits instead of queuing a message."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            box = app.query_one(InputBox)
+            box.focus()
+            await pilot.pause()
+            box.value = "exit"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app._quitting
+            # Only the shutdown sentinel is queued — the exit word is never
+            # steered as a user message.
+            queued = []
+            while not app._steering.empty():
+                queued.append(app._steering.get_nowait())
+            assert queued == [app._SHUTDOWN]
+
+    asyncio.run(_run())
+
+
 # ── Integration: modal keybindings + theme wiring via Pilot ──────────────────
 
 
@@ -259,6 +378,9 @@ def test_light_theme_changes_widget_colors(monkeypatch):
 
 def test_cancelled_event_routes_to_status_bar(monkeypatch, tmp_path):
     """agent_cancelled routed through handle_agent_event shows 'cancelled'."""
+    # Stub the model so on_mount's agent run ends cleanly instead of racing a
+    # live auth error into the status bar.
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([[_chunk(finish_reason="stop")]]))
 
     async def _run():
         app = AgentApp("noop")

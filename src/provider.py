@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
@@ -56,6 +57,13 @@ def _thinking_kwargs(model: str) -> dict:
 # path. MODEL / MAX_TOKENS are read from the environment via config (AGENT_MODEL,
 # AGENT_MAX_TOKENS), so the provider is configurable without touching this file.
 USE_CLAUDE_CLI = os.environ.get("USE_CLAUDE_CLI_LLM", "") == "1"
+
+# Permission mode for the `claude -p` subprocess. In print mode the CLI cannot
+# show an interactive approval prompt, so without a permission mode every write
+# and bash call is denied ("I need permission..."). Default to bypassPermissions
+# to mirror this project's own default posture (AGENT_PERMISSION_MODE=auto);
+# override with CLAUDE_CLI_PERMISSION_MODE (e.g. acceptEdits) for a stricter run.
+CLI_PERMISSION_MODE = os.environ.get("CLAUDE_CLI_PERMISSION_MODE", "bypassPermissions")
 
 
 def _chunk(content=None, finish_reason=None, tool_calls=None, thinking=None, signature=None):
@@ -150,21 +158,58 @@ def _messages_to_prompt(system_prompt: str, messages: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
+def _parse_stream_json_text(line: bytes) -> str | None:
+    """Extract the text token from one `claude -p` stream-json NDJSON line.
+
+    The CLI's stream-json output interleaves system/init/result events with the
+    per-token `content_block_delta` events we care about. We return the token
+    text only for a `text_delta` (skipping thinking deltas and every non-token
+    event), and None for noise or any line that is not valid JSON — so the caller
+    can stream tokens as they arrive instead of buffering the whole reply.
+    """
+    try:
+        obj = json.loads(line)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(obj, dict) or obj.get("type") != "stream_event":
+        return None
+    event = obj.get("event") or {}
+    if event.get("type") != "content_block_delta":
+        return None
+    delta = event.get("delta") or {}
+    if delta.get("type") != "text_delta":
+        return None
+    return delta.get("text") or None
+
+
 async def _claude_cli_stream(
     messages: list[dict], system_prompt: str, model: str | None = None
 ) -> AsyncIterator[Any]:
     """Serve one turn by shelling out to `claude -p`, yielding OpenAI chunks.
 
-    A subprocess runs the local Claude CLI in print mode (-p), streaming its
-    stdout line by line. Each line becomes a text_delta chunk shaped exactly like
-    the LiteLLM path's chunks, so the agent loop never knows the backend changed.
-    A final empty chunk carries finish_reason="stop" to close the turn.
+    The subprocess runs the local Claude CLI in print mode with stream-json
+    output (--output-format stream-json --verbose --include-partial-messages),
+    so it emits one NDJSON event per token. We parse each line and yield a
+    text_delta chunk for every `content_block_delta`, shaped exactly like the
+    LiteLLM path's chunks — giving real token-by-token streaming the agent loop
+    consumes without knowing the backend changed. A final empty chunk carries
+    finish_reason="stop" to close the turn.
 
-    Text-only: TOOLS_SCHEMA is not forwarded, so the CLI cannot call tools in
-    this fork. Full tool-calling parity needs the stream-json protocol (deferred).
+    Text-only: TOOLS_SCHEMA is not forwarded, so the agent's own tool loop is not
+    driven on this fork (the `claude -p` session uses its own tools internally).
     """
     prompt = _messages_to_prompt(system_prompt, messages)
-    cmd = ["claude", "-p", prompt]
+    cmd = [
+        "claude",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--permission-mode",
+        CLI_PERMISSION_MODE,
+    ]
     if model:
         cmd += ["--model", model]
 
@@ -180,7 +225,9 @@ async def _claude_cli_stream(
         line = await proc.stdout.readline()
         if not line:
             break
-        yield _chunk(content=line.decode(errors="replace"))
+        text = _parse_stream_json_text(line)
+        if text:
+            yield _chunk(content=text)
 
     await proc.wait()
     # Close the turn so the loop's finish_reason check fires (no tool calls).

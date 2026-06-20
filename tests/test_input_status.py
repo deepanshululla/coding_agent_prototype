@@ -114,6 +114,28 @@ def test_input_box_enter_populates_pending():
     assert pending == [{"role": "user", "content": "do the thing"}]
 
 
+def test_input_box_keeps_text_visible_on_focus():
+    """Focusing the input must not squeeze out its single text row (a tall focus
+    border on a height-1 box) nor select-all (hiding text under the highlight).
+    The box is compact (borderless even on focus) and does not select on focus.
+    """
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            box = app.query_one(InputBox)
+            assert box.compact is True
+            assert box.select_on_focus is False
+            box.value = "hello"
+            box.focus()
+            await pilot.pause()
+            # Focus neither clears the value nor selects (highlights) it.
+            assert box.value == "hello"
+            assert box.selection.is_empty
+
+    asyncio.run(_run())
+
+
 def test_input_box_whitespace_only_is_ignored():
     """Whitespace-only submissions are filtered out before posting."""
     pending: list[dict] = []
@@ -189,6 +211,9 @@ def test_status_bar_tracks_iterations_and_done(monkeypatch, tmp_path):
         app = AgentApp("read the file")
         set_app(app)
         async with app.run_test() as pilot:
+            # End the persistent steering loop after the scripted turns so the
+            # run reaches agent_end and the status bar shows 'done'.
+            app.request_shutdown()
             for _ in range(80):
                 await pilot.pause()
                 if app.agent_history is not None:
