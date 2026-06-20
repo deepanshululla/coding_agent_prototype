@@ -32,6 +32,11 @@ def _csv(name: str, default: list[str]) -> list[str]:
 MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")
 MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
 
+# ── Architecture ──────────────────────────────────────────────────────────────
+# The agent control-flow strategy (see architecture.py). Overridable per-run via
+# the --architecture CLI flag; unknown names fall back to "reactive".
+ARCHITECTURE = os.environ.get("AGENT_ARCHITECTURE", "reactive")
+
 # Extended thinking (Phase 17). When THINKING_BUDGET > 0 the provider asks the
 # model to reason in a scratchpad before answering; the budget is the token
 # allowance for that reasoning. Disabled by default (0) because each thinking

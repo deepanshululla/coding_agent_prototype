@@ -5,6 +5,8 @@ RunContext defaults. Architecture *behaviors* live in their own test modules;
 here we only exercise the seam in src/architecture.py.
 """
 
+import asyncio
+
 import pytest
 
 import architecture
@@ -90,3 +92,24 @@ def test_importing_agent_registers_reactive_as_default():
 
     assert DEFAULT_ARCHITECTURE in ARCHITECTURES
     assert type(get_architecture(None)).__name__ == "ReactiveAgent"
+
+
+def test_run_agent_delegates_to_selected_architecture():
+    """run_agent(architecture=name) routes to that architecture, passing the task
+    and a RunContext carrying the seams — proving the loop is now pluggable."""
+    import agent
+
+    seen = {}
+
+    @register("recording_arch")
+    class Recording:
+        async def run(self, task, ctx):
+            seen["task"] = task
+            seen["system_prompt"] = ctx.system_prompt
+            return [{"role": "assistant", "content": "recorded"}]
+
+    out = asyncio.run(
+        agent.run_agent("do the thing", architecture="recording_arch", system_prompt="SP")
+    )
+    assert seen == {"task": "do the thing", "system_prompt": "SP"}
+    assert out == [{"role": "assistant", "content": "recorded"}]

@@ -7,7 +7,7 @@ from typing import Any
 
 from architecture import RunContext, get_architecture, register
 from compaction import compact_if_needed
-from config import MAX_ITERATIONS
+from config import ARCHITECTURE, MAX_ITERATIONS
 from logging_config import logger
 from policy import PolicyEngine
 from prompts import build_system_prompt
@@ -256,7 +256,8 @@ async def run_agent(
         get_steering_messages=get_steering_messages,
     )
     _load_architectures()  # ensure the built-in alternates are registered
-    return await get_architecture(architecture).run(task, ctx)
+    # Explicit arg wins; otherwise the AGENT_ARCHITECTURE env default (reactive).
+    return await get_architecture(architecture or ARCHITECTURE).run(task, ctx)
 
 
 def _load_architectures() -> None:

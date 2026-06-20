@@ -79,6 +79,26 @@ def _extract_model(args: list[str]) -> tuple[list[str], str | None]:
     return remaining, model
 
 
+def _extract_architecture(args: list[str]) -> tuple[list[str], str | None]:
+    """Pull an ``--architecture`` flag out of ``args``.
+
+    ``--architecture <name>`` selects the control-flow strategy for this run
+    (``reactive``, ``orchestrator-worker``, ``evaluator-optimizer``,
+    ``planner-executor``), overriding the ``AGENT_ARCHITECTURE`` env var. The
+    single token that follows the flag is the name; it is removed from the arg
+    list so it is not mistaken for part of the task. Returns the remaining args
+    and the name (``None`` when the flag is absent, falling back to the
+    configured default).
+    """
+    if "--architecture" not in args:
+        return args, None
+
+    idx = args.index("--architecture")
+    name = args[idx + 1] if idx + 1 < len(args) else None
+    remaining = args[:idx] + args[idx + 2 :]
+    return remaining, name
+
+
 def main() -> None:
     load_dotenv()
 
@@ -99,6 +119,11 @@ def main() -> None:
     # --model (Layer 13.6): pick the provider/model for this run, overriding the
     # AGENT_MODEL env var. `model is None` falls back to the configured MODEL.
     args, model = _extract_model(args)
+
+    # --architecture: pick the control-flow strategy for this run, overriding the
+    # AGENT_ARCHITECTURE env var. `architecture is None` falls back to the
+    # configured default ("reactive").
+    args, architecture = _extract_architecture(args)
 
     # --sandbox: run inside a throwaway git worktree (Layer 12.4). The flag must
     # be the first argument; everything after it is the task.
@@ -141,7 +166,16 @@ def main() -> None:
 
         run(task)
     else:
-        asyncio.run(_run_stdout(task, cwd=cwd, extra=extra, skills=active_skills, model=model))
+        asyncio.run(
+            _run_stdout(
+                task,
+                cwd=cwd,
+                extra=extra,
+                skills=active_skills,
+                model=model,
+                architecture=architecture,
+            )
+        )
 
 
 async def _run_stdout(
@@ -151,6 +185,7 @@ async def _run_stdout(
     extra: str,
     skills: list[str] | None,
     model: str | None = None,
+    architecture: str | None = None,
 ) -> None:
     """Run the agent on the stdout path with MCP servers wired in.
 
@@ -171,6 +206,7 @@ async def _run_stdout(
             system_prompt=system_prompt,
             after_tool_call=log_after_tool_call,
             model=model,
+            architecture=architecture,
         )
     finally:
         for session in sessions:

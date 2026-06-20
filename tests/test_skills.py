@@ -128,3 +128,36 @@ def test_extract_model_trailing_flag_no_value():
     task, model = main._extract_model(["do it", "--model"])
     assert model is None
     assert task == ["do it"]
+
+
+# --- CLI flag parsing (main._extract_architecture) ---
+
+
+def test_extract_architecture_absent_returns_none():
+    task, arch = main._extract_architecture(["explain", "the", "loop"])
+    assert arch is None
+    assert task == ["explain", "the", "loop"]
+
+
+def test_extract_architecture_pulls_value_and_strips_flag():
+    task, arch = main._extract_architecture(
+        ["--architecture", "orchestrator-worker", "refactor the parser"]
+    )
+    assert arch == "orchestrator-worker"
+    assert task == ["refactor the parser"]
+
+
+def test_extract_architecture_trailing_flag_no_value():
+    task, arch = main._extract_architecture(["do it", "--architecture"])
+    assert arch is None
+    assert task == ["do it"]
+
+
+def test_extract_architecture_coexists_with_model():
+    args, model = main._extract_model(
+        ["--architecture", "planner-executor", "--model", "gpt-4o", "go"]
+    )
+    args, arch = main._extract_architecture(args)
+    assert model == "gpt-4o"
+    assert arch == "planner-executor"
+    assert args == ["go"]
