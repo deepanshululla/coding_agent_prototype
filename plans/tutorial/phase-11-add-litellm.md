@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-11-add-litellm
 
 # Phase 11 — Add LiteLLM (Multi-Provider)
 

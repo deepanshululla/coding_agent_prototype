@@ -1,21 +1,25 @@
 from __future__ import annotations
 
-import asyncio
-import json
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
 
-MODEL_ALIAS = "sonnet"  # passed to claude --model; change to "opus" etc.
+import litellm
+
+from tools import TOOLS_SCHEMA
+
+MODEL = "claude-sonnet-4-5"  # prefix selects provider; change to swap (e.g. "gpt-4o")
+MAX_TOKENS = 8096
 
 
 def _chunk(content=None, finish_reason=None, tool_calls=None):
     """Build one OpenAI-format streaming chunk the agent loop understands.
 
-    Uses SimpleNamespace so no provider SDK is needed. Phase 11 replaces the
-    class body with litellm.acompletion, which returns real chunk objects with
-    this same shape. tool_calls (from Phase 4 on) carries a list of streamed
-    tool-call fragments, each shaped like _tc() below.
+    Uses SimpleNamespace so no provider SDK is needed in tests. litellm yields
+    real chunk objects with this same shape, so the loop — and the test harness
+    that scripts these chunks — sees one interface regardless of backend.
+    tool_calls carries a list of streamed tool-call fragments, each shaped like
+    _tc() below.
     """
     delta = SimpleNamespace(content=content, tool_calls=tool_calls)
     choice = SimpleNamespace(delta=delta, finish_reason=finish_reason)
@@ -26,76 +30,11 @@ def _tc(index, id=None, name=None, arguments=None):
     """Build one OpenAI-format tool-call delta fragment for a streaming chunk.
 
     Mirrors the shape litellm yields in delta.tool_calls: an .index, an .id,
-    and a nested .function with .name and .arguments. Phase 4 delivers the
-    whole call in one fragment; Phase 5 splits .arguments across fragments.
+    and a nested .function with .name and .arguments. A whole call may arrive in
+    one fragment, or .arguments may be split across fragments.
     """
     function = SimpleNamespace(name=name, arguments=arguments)
     return SimpleNamespace(index=index, id=id, function=function)
-
-
-class ModelClient:
-    """Wraps `claude -p` as a streaming completion backend."""
-
-    async def complete(self, messages: list[dict], system_prompt: str) -> str:
-        """Non-streaming path (kept for reference; loop uses stream() from Phase 3 on)."""
-        prompt = messages[-1]["content"]
-        proc = await asyncio.create_subprocess_exec(
-            "claude", "-p", prompt,
-            "--system-prompt", system_prompt,
-            "--model", MODEL_ALIAS,
-            "--output-format", "text",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        return stdout.decode().strip()
-
-    async def stream(
-        self, messages: list[dict], system_prompt: str
-    ) -> AsyncIterator[Any]:
-        """Stream via `claude -p --output-format stream-json`.
-
-        Translates CLI events into OpenAI-format chunks so the agent loop
-        sees the same interface regardless of backend.
-        """
-        prompt = messages[-1]["content"]
-        proc = await asyncio.create_subprocess_exec(
-            "claude", "-p", prompt,
-            "--system-prompt", system_prompt,
-            "--model", MODEL_ALIAS,
-            "--output-format", "stream-json",
-            "--verbose",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        async for raw_line in proc.stdout:
-            line = raw_line.strip()
-            if not line:
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            # stream-json emits assistant events with text blocks.
-            if event.get("type") == "assistant":
-                for block in event["message"]["content"]:
-                    if block.get("type") == "text":
-                        yield _chunk(content=block["text"])
-            elif event.get("type") == "result":
-                yield _chunk(finish_reason="stop")
-        await proc.wait()
-
-
-# Module singleton — everything outside provider.py imports the functions only.
-_client = ModelClient()
-
-
-async def call_model(messages: list[dict], system_prompt: str) -> str:
-    """Non-streaming call — kept so Phase 1/2 code still works.
-
-    Delegates to the ModelClient singleton. Callers never instantiate the class.
-    """
-    return await _client.complete(messages, system_prompt)
 
 
 async def stream_response(
@@ -103,9 +42,21 @@ async def stream_response(
 ) -> AsyncIterator[Any]:
     """Stream a model response as OpenAI-format chunks.
 
-    This is the function the agent loop imports from Phase 3 onward. The
-    underlying backend (claude -p now; LiteLLM in Phase 11) is hidden behind
-    ModelClient — the signature and chunk shape never change.
+    acompletion is non-blocking, so the event loop stays free to execute tools
+    concurrently while tokens arrive. Yields chunks unchanged for the agent loop
+    to accumulate. The backend is LiteLLM (Phase 11); the model string in MODEL
+    routes to the matching provider via its prefix, picking up the API key from
+    the environment automatically. The signature and chunk shape are the same
+    the loop has consumed since Phase 3.
     """
-    async for chunk in _client.stream(messages, system_prompt):
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    response = await litellm.acompletion(
+        model=MODEL,
+        messages=full_messages,
+        tools=TOOLS_SCHEMA,
+        tool_choice="auto",
+        max_tokens=MAX_TOKENS,
+        stream=True,
+    )
+    async for chunk in response:
         yield chunk
