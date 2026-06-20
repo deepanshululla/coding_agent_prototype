@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-10-3-tool-panel
 
 # Phase 10.3 — The Tool Panel
 
