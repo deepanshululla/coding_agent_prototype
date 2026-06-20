@@ -113,23 +113,43 @@ def main() -> None:
     extra = "\n\n".join(
         filter(None, [load_project_instructions(cwd), session_override])
     )
-    system_prompt = build_system_prompt(cwd=cwd, extra=extra, skills=active_skills)
 
     if os.getenv("AGENT_UI", "stdout") == "tui":
+        # The TUI path keeps its own prompt build; MCP wiring lives on the
+        # stdout path (Layer 13.5) where session lifecycle is easy to manage.
+        system_prompt = build_system_prompt(cwd=cwd, extra=extra, skills=active_skills)
         from tui import run
 
         run(task)
     else:
-        from agent import run_agent
-        from hooks import log_after_tool_call
+        asyncio.run(_run_stdout(task, cwd=cwd, extra=extra, skills=active_skills))
 
-        asyncio.run(
-            run_agent(
-                task,
-                system_prompt=system_prompt,
-                after_tool_call=log_after_tool_call,
-            )
+
+async def _run_stdout(
+    task: str, *, cwd: str, extra: str, skills: list[str] | None
+) -> None:
+    """Run the agent on the stdout path with MCP servers wired in.
+
+    MCP servers (Layer 13.5) are connected *before* the system prompt is built
+    so their tools are merged into TOOLS_SCHEMA before the first API call. The
+    try/finally guarantees every session is closed even if the run raises.
+    """
+    from agent import run_agent
+    from hooks import log_after_tool_call
+    from mcp_client import load_mcp_servers
+    from prompts import build_system_prompt
+
+    sessions = await load_mcp_servers()
+    try:
+        system_prompt = build_system_prompt(cwd=cwd, extra=extra, skills=skills)
+        await run_agent(
+            task,
+            system_prompt=system_prompt,
+            after_tool_call=log_after_tool_call,
         )
+    finally:
+        for session in sessions:
+            await session.aclose()
 
 
 if __name__ == "__main__":

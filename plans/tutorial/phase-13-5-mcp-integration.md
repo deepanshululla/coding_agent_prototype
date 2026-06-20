@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-13-5-mcp-integration
 
 # Phase 13.5 — MCP Integration
 
