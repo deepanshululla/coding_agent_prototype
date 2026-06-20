@@ -5,6 +5,9 @@ description: Add a tool panel widget that shows each tool call as a spinner row 
 ---
 
 # Layer 10.3 — The Tool Panel
+:::note Implemented
+This step is implemented on branch `step/phase-10-3-tool-panel` (plan: `plans/tutorial/phase-10-3-tool-panel.md`).
+:::
 
 :::note Starting point
 The transcript app from Layer 10.2: a single `TranscriptPane` that renders `text_delta` events. `AGENT_UI=tui` launches a full-screen Textual app. The stdout path is unchanged.

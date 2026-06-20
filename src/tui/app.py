@@ -12,16 +12,21 @@ from __future__ import annotations
 import asyncio
 
 from textual.app import App, ComposeResult
+from textual.containers import Horizontal
 
+from tui.components.tool_panel import ToolPanel
 from tui.components.transcript import TranscriptPane
 
 
 class AgentApp(App):
-    """Minimal TUI: transcript pane only (Layer 10.2)."""
+    """TUI with transcript + tool panel (Layer 10.3)."""
 
     CSS = """
     Screen {
         layout: vertical;
+    }
+    Horizontal {
+        height: 1fr;
     }
     """
 
@@ -34,7 +39,9 @@ class AgentApp(App):
         self.agent_history: list[dict] | None = None
 
     def compose(self) -> ComposeResult:
-        yield TranscriptPane(highlight=True, markup=False)
+        with Horizontal():
+            yield TranscriptPane(highlight=True, markup=False)
+            yield ToolPanel()
 
     async def on_mount(self) -> None:
         # Import here to avoid a circular dependency: agent imports renderer,
@@ -50,4 +57,14 @@ class AgentApp(App):
         t = event["type"]
         if t == "text_delta":
             self.query_one(TranscriptPane).append_text(event["delta"])
-        # Other event types (tool_call_start/end, etc.) handled in later layers.
+        elif t == "tool_call_start":
+            self.query_one(ToolPanel).add_tool_row(event["index"], event["name"])
+        elif t == "tool_call_end":
+            self.query_one(ToolPanel).finish_tool_row(
+                event["index"],
+                ok=not event["is_error"],
+                chars=event["chars"],
+            )
+        # turn_end / agent_end: the panel keeps the last turn's results visible
+        # until the next turn's first tool_call_start (clear_rows) overwrites
+        # them. The status bar in Layer 10.4 consumes turn_end / agent_end.
