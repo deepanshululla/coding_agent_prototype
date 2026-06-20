@@ -6,6 +6,10 @@ description: Switch the `claude -p` backend to `--output-format stream-json`, tr
 
 # Phase 3 — Streaming Responses
 
+:::note Implemented
+This step is implemented on branch `step/phase-03-streaming` (plan: `plans/tutorial/phase-03-streaming.md`).
+:::
+
 :::note Starting point
 Phase 2's text-only `run_agent` loop, calling `call_model`. This phase converts that call to streaming and renames the function `stream_response`.
 :::

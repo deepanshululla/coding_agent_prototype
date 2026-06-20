@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-03-streaming
 
 # Phase 3 — Streaming Responses
 
