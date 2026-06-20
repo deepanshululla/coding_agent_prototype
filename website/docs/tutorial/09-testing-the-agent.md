@@ -6,6 +6,10 @@ description: Make the agent loop deterministically testable without any network 
 
 # Phase 9 — Testing the Agent
 
+:::note Implemented
+This step is implemented on branch `step/phase-09-testing-the-agent` (plan: `plans/tutorial/phase-09-testing-the-agent.md`).
+:::
+
 :::note Starting point
 Phase 8's finished agent (`run_agent` + `main.py`). This phase locks its behavior in with deterministic tests.
 :::

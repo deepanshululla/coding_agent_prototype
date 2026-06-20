@@ -300,3 +300,59 @@ async def test_unknown_tool_returns_error_not_raise(monkeypatch):
     assert tool_msgs[0]["tool_call_id"] == "c0"
     assert "Unknown tool" in tool_msgs[0]["content"]
     assert messages[-1]["content"] == "All done."
+
+
+@pytest.mark.asyncio
+async def test_plain_text_turn_stops(monkeypatch):
+    """A single text-only turn ending in finish_reason=stop produces exactly a
+    user + assistant pair, with no tool_calls key and no role:tool messages."""
+    turns = [
+        [
+            _chunk(content="Hello, "),
+            _chunk(content="world."),
+            _chunk(finish_reason="stop"),
+        ]
+    ]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
+
+    messages = await agent.run_agent("say hi")
+
+    assert len(messages) == 2
+    assert messages[0] == {"role": "user", "content": "say hi"}
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "Hello, world."
+    assert "tool_calls" not in messages[1]
+    assert not any(m["role"] == "tool" for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_multiple_parallel_tool_calls(monkeypatch, tmp_path):
+    """Two read_file calls dispatched in one turn — distinguished only by their
+    index — both run, and both tool_call_ids and both file contents appear in
+    the history."""
+    first = tmp_path / "first.txt"
+    first.write_text("the-first-content")
+    second = tmp_path / "second.txt"
+    second.write_text("the-second-content")
+
+    turn1 = [
+        _chunk(
+            tool_calls=[
+                _tc(0, id="call_0", name="read_file", arguments=f'{{"path": "{first}"}}'),
+                _tc(1, id="call_1", name="read_file", arguments=f'{{"path": "{second}"}}'),
+            ]
+        ),
+        _chunk(finish_reason="tool_calls"),
+    ]
+    turn2 = [_chunk(content="Both read."), _chunk(finish_reason="stop")]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2]))
+
+    messages = await agent.run_agent("read first.txt and second.txt")
+
+    tool_ids = {m["tool_call_id"] for m in messages if m["role"] == "tool"}
+    assert tool_ids == {"call_0", "call_1"}
+
+    contents = "".join(m["content"] for m in messages if m["role"] == "tool")
+    assert "the-first-content" in contents
+    assert "the-second-content" in contents
+    assert messages[-1]["content"] == "Both read."
