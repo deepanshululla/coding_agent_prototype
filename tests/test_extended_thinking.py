@@ -143,9 +143,7 @@ def test_thinking_block_precedes_tool_calls(monkeypatch, tmp_path):
         [
             _chunk(thinking="I should read the file"),
             _chunk(
-                tool_calls=[
-                    _tc(0, id="call_1", name="read_file", arguments='{"path": "x.txt"}')
-                ]
+                tool_calls=[_tc(0, id="call_1", name="read_file", arguments='{"path": "x.txt"}')]
             ),
             _chunk(finish_reason="tool_calls"),
         ],

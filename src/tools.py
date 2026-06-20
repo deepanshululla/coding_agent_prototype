@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 # Caps that keep tool output from blowing the context window. Resolved values
@@ -384,7 +385,10 @@ TOOLS_SCHEMA: list[dict] = [
     },
 ]
 
-TOOL_REGISTRY = {
+# Name → coroutine. The MCP client (Layer 13.5) injects extra entries at runtime
+# keyed by dynamic names, so the value type is the broad "any async tool callable"
+# rather than the union of the eight built-ins' exact signatures.
+TOOL_REGISTRY: dict[str, Callable[..., Awaitable[str]]] = {
     "read_file": read_file,
     "write_file": write_file,
     "edit_file": edit_file,

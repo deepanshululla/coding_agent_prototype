@@ -41,14 +41,14 @@ def _thinking_kwargs(model: str) -> dict:
         max_tokens = max(MAX_TOKENS, THINKING_BUDGET + 2000)
         # Guard against misconfiguration — the API rejects budget >= max_tokens.
         assert max_tokens > THINKING_BUDGET, (
-            f"max_tokens ({max_tokens}) must exceed THINKING_BUDGET "
-            f"({THINKING_BUDGET})"
+            f"max_tokens ({max_tokens}) must exceed THINKING_BUDGET ({THINKING_BUDGET})"
         )
         return {
             "thinking": {"type": "enabled", "budget_tokens": THINKING_BUDGET},
             "max_tokens": max_tokens,
         }
     return {"max_tokens": MAX_TOKENS}
+
 
 # Phase 13.6: an opt-in fork that shells out to `claude -p` instead of LiteLLM.
 # Set USE_CLAUDE_CLI_LLM=1 to route stream_response through the local Claude CLI
@@ -174,6 +174,8 @@ async def _claude_cli_stream(
         stderr=asyncio.subprocess.PIPE,
     )
 
+    # stdout is typed Optional, but PIPE above guarantees a reader here.
+    assert proc.stdout is not None
     while True:
         line = await proc.stdout.readline()
         if not line:

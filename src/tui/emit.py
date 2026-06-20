@@ -9,10 +9,17 @@ uses it for the lifetime of the process.
 
 from __future__ import annotations
 
-_app: AgentApp | None = None  # noqa: F821 — forward ref, app.py imports this
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Imported for typing only; app.py imports this module at runtime, so a real
+    # import here would be circular.
+    from tui.app import AgentApp
+
+_app: AgentApp | None = None
 
 
-def set_app(app: AgentApp) -> None:  # noqa: F821
+def set_app(app: AgentApp) -> None:
     """Register the live app instance. Called once at startup."""
     global _app
     _app = app

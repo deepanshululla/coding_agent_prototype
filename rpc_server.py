@@ -19,6 +19,8 @@ import asyncio
 import json
 import os
 import sys
+from collections.abc import AsyncIterator
+from typing import Any
 
 sys.path.insert(0, "src")
 
@@ -36,11 +38,15 @@ def _install_mock_agent() -> None:
     import agent
     from provider import _chunk
 
-    async def _scripted(messages, system_prompt, model=None):
+    async def _scripted(
+        messages: list[dict], system_prompt: str, model: str | None = None
+    ) -> AsyncIterator[Any]:
         yield _chunk(content="hello")
         yield _chunk(finish_reason="stop")
 
-    agent.stream_response = _scripted
+    # Deliberate test-injection monkeypatch; ty can't model reassigning a
+    # module-level function even when the signature matches exactly.
+    agent.stream_response = _scripted  # ty: ignore[invalid-assignment]
 
 
 async def main() -> None:

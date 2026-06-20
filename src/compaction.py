@@ -127,7 +127,7 @@ def _keep_recent_only(messages: list[dict]) -> list[dict]:
     head = _first_user_turn(messages)
     head_len = len(head)
 
-    tail = messages[max(head_len, len(messages) - KEEP_RECENT_MESSAGES):]
+    tail = messages[max(head_len, len(messages) - KEEP_RECENT_MESSAGES) :]
     # Drop any leading orphan tool messages from the tail.
     while tail and _is_tool_result(tail[0]):
         tail = tail[1:]
@@ -145,11 +145,11 @@ async def _summarise_old_turns(messages: list[dict], system_prompt: str) -> list
     """
     head = _first_user_turn(messages)
     head_len = len(head)
-    tail = messages[max(head_len, len(messages) - KEEP_RECENT_MESSAGES):]
+    tail = messages[max(head_len, len(messages) - KEEP_RECENT_MESSAGES) :]
     while tail and _is_tool_result(tail[0]):
         tail = tail[1:]
 
-    to_summarise = messages[head_len:len(messages) - len(tail)]
+    to_summarise = messages[head_len : len(messages) - len(tail)]
     if not to_summarise:
         return _keep_recent_only(messages)
 
@@ -160,8 +160,7 @@ async def _summarise_old_turns(messages: list[dict], system_prompt: str) -> list
                 "Summarise the following conversation history into a concise set "
                 "of bullet points capturing every decision, file touched, and fact "
                 "the assistant will need to continue the task. Preserve identifiers, "
-                "paths, and values verbatim.\n\n"
-                + json.dumps(to_summarise, default=str)
+                "paths, and values verbatim.\n\n" + json.dumps(to_summarise, default=str)
             ),
         }
     ]

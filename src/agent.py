@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 from compaction import compact_if_needed
 from config import MAX_ITERATIONS
@@ -187,7 +188,7 @@ async def run_agent(
             )
 
             # Finalize tool calls (arguments stay a JSON string in history).
-            tool_calls = [
+            tool_calls: list[dict[str, Any]] = [
                 {
                     "id": tc["id"],
                     "type": "function",

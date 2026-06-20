@@ -56,9 +56,7 @@ def _fake_stream_with_tool(target):
     turn1 = [
         _chunk(content="Reading."),
         _chunk(
-            tool_calls=[
-                _tc(0, id="call_x", name="read_file", arguments=f'{{"path": "{target}"}}')
-            ]
+            tool_calls=[_tc(0, id="call_x", name="read_file", arguments=f'{{"path": "{target}"}}')]
         ),
         _chunk(finish_reason="tool_calls"),
     ]
@@ -112,7 +110,9 @@ def test_json_output_emits_ndjson_in_order(tmp_path, capsys):
             assert renderer.emit is renderer._json_emit
             assert renderer.emit is not renderer_stdout.emit
 
-            with patch.object(agent, "stream_response", ScriptedLLM(_fake_stream_with_tool(target))):
+            with patch.object(
+                agent, "stream_response", ScriptedLLM(_fake_stream_with_tool(target))
+            ):
                 events, _messages = asyncio.run(run_agent_collecting("read hello.txt"))
         finally:
             renderer.emit = saved_renderer_emit
@@ -151,11 +151,13 @@ def test_json_output_emits_ndjson_in_order(tmp_path, capsys):
 
     # tool_call_start precedes the matching tool_call_end with the same id.
     start_idx = next(
-        i for i, e in enumerate(events)
+        i
+        for i, e in enumerate(events)
         if e["type"] == "tool_call_start" and e["tool_call_id"] == "call_x"
     )
     end = next(
-        i for i, e in enumerate(events)
+        i
+        for i, e in enumerate(events)
         if e["type"] == "tool_call_end" and e["tool_call_id"] == "call_x"
     )
     assert start_idx < end

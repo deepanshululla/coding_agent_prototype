@@ -37,8 +37,10 @@ def test_readonly_denies_write_file():
 
 def test_readonly_denies_bash_and_edit():
     rule = ReadOnlyRule()
-    assert rule.evaluate("bash", {"command": "ls"}).outcome == "deny"
-    assert rule.evaluate("edit_file", {"path": "x"}).outcome == "deny"
+    bash_decision = rule.evaluate("bash", {"command": "ls"})
+    edit_decision = rule.evaluate("edit_file", {"path": "x"})
+    assert bash_decision is not None and bash_decision.outcome == "deny"
+    assert edit_decision is not None and edit_decision.outcome == "deny"
 
 
 def test_readonly_passes_read_tools():

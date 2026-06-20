@@ -139,7 +139,7 @@ def test_cancel_event_none_preserves_normal_run(monkeypatch, tmp_path):
 
 
 def _status_text(bar: StatusBar) -> Text | str:
-    return bar._Static__content
+    return bar._Static__content  # ty: ignore[unresolved-attribute]  (Textual private)
 
 
 # ── Integration: modal keybindings + theme wiring via Pilot ──────────────────

@@ -17,8 +17,6 @@ turns after the prior ones — without re-executing the earlier read_file /
 write_file calls.
 """
 
-import asyncio
-
 import pytest
 
 import agent
@@ -45,9 +43,7 @@ class ScriptedLLM:
 
 
 @pytest.mark.asyncio
-async def test_steering_continues_without_replaying_prior_tool_calls(
-    monkeypatch, tmp_path
-):
+async def test_steering_continues_without_replaying_prior_tool_calls(monkeypatch, tmp_path):
     src = tmp_path / "source.txt"
     src.write_text("original content")
     dst = tmp_path / "copy.txt"
@@ -81,9 +77,7 @@ async def test_steering_continues_without_replaying_prior_tool_calls(
     # Phase 2, turn 4: the model wraps up and stops for good.
     turn4 = [_chunk(content="Tests passed."), _chunk(finish_reason="stop")]
 
-    monkeypatch.setattr(
-        agent, "stream_response", ScriptedLLM([turn1, turn2, turn3, turn4])
-    )
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2, turn3, turn4]))
     # Allow every tool so the scripted bash run actually dispatches.
     monkeypatch.setattr(agent, "_policy", PolicyEngine(rules=[], default="allow"))
 
@@ -117,14 +111,10 @@ async def test_steering_continues_without_replaying_prior_tool_calls(
     assert requested.index("bash") > requested.index("write_file")
 
     # The steering message was woven into the history (continued, not restarted).
-    assert any(
-        m["role"] == "user" and m["content"] == "now run the tests" for m in messages
-    )
+    assert any(m["role"] == "user" and m["content"] == "now run the tests" for m in messages)
 
     # The bash tool actually ran and its output landed in a role:tool message.
-    bash_tool_msgs = [
-        m for m in messages if m["role"] == "tool" and m["tool_call_id"] == "c_bash"
-    ]
+    bash_tool_msgs = [m for m in messages if m["role"] == "tool" and m["tool_call_id"] == "c_bash"]
     assert len(bash_tool_msgs) == 1
     assert "ran-tests" in bash_tool_msgs[0]["content"]
 

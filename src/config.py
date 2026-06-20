@@ -39,9 +39,7 @@ MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
 # planning / architectural refactors. THINKING_BUDGET and MAX_TOKENS are both
 # also readable via the bare env names THINKING_BUDGET / MAX_TOKENS (the plan's
 # names) for convenience.
-THINKING_BUDGET = _int(
-    "THINKING_BUDGET", _int("AGENT_THINKING_BUDGET", 0)
-)
+THINKING_BUDGET = _int("THINKING_BUDGET", _int("AGENT_THINKING_BUDGET", 0))
 
 # ── Loop ─────────────────────────────────────────────────────────────────────
 MAX_ITERATIONS = _int("AGENT_MAX_ITERATIONS", 30)

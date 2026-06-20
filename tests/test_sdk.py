@@ -67,9 +67,7 @@ def test_collects_tool_call_start_before_end(monkeypatch, tmp_path):
     turn1 = [
         _chunk(content="Reading."),
         _chunk(
-            tool_calls=[
-                _tc(0, id="call_x", name="read_file", arguments=f'{{"path": "{target}"}}')
-            ]
+            tool_calls=[_tc(0, id="call_x", name="read_file", arguments=f'{{"path": "{target}"}}')]
         ),
         _chunk(finish_reason="tool_calls"),
     ]

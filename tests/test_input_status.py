@@ -34,7 +34,7 @@ def _status_text(bar: StatusBar) -> str:
     Static stores the content on the name-mangled `_Static__content` attribute;
     we pass it a plain str, so reading it back gives the rendered label.
     """
-    content = bar._Static__content
+    content = bar._Static__content  # ty: ignore[unresolved-attribute]  (Textual private)
     return content.plain if isinstance(content, Text) else str(content)
 
 

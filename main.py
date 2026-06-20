@@ -141,11 +141,7 @@ def main() -> None:
 
         run(task)
     else:
-        asyncio.run(
-            _run_stdout(
-                task, cwd=cwd, extra=extra, skills=active_skills, model=model
-            )
-        )
+        asyncio.run(_run_stdout(task, cwd=cwd, extra=extra, skills=active_skills, model=model))
 
 
 async def _run_stdout(

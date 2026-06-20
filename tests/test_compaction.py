@@ -184,9 +184,7 @@ async def test_summarise_falls_back_to_keep_recent_on_failure(monkeypatch):
     assert len(out) < len(msgs)
     assert out[0]["role"] == "user" and "BANANA-42" in out[0]["content"]
     # No summary turn — the fallback kept verbatim tail instead.
-    assert not any(
-        "[summary of earlier conversation]" in (m.get("content") or "") for m in out
-    )
+    assert not any("[summary of earlier conversation]" in (m.get("content") or "") for m in out)
 
 
 # ── Integration: the agent loop sends the compacted context ──────────────────
@@ -224,10 +222,7 @@ async def test_agent_sends_compacted_context_to_provider(monkeypatch):
     assert sent_tokens < full_tokens
     # The agent proceeds coherently: it answered, and the original fact is
     # still in the real (uncompacted) history.
-    assert any(
-        m["role"] == "user" and "BANANA-42" in (m.get("content") or "")
-        for m in messages
-    )
+    assert any(m["role"] == "user" and "BANANA-42" in (m.get("content") or "") for m in messages)
 
 
 @pytest.mark.asyncio
