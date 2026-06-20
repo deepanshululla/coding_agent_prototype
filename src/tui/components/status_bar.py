@@ -40,6 +40,7 @@ class StatusBar(Static):
         self._cancelled = False
         self._waiting = False
         self._error: str | None = None
+        self._permission: str | None = None
         self._color = (theme or {}).get("status", "grey70")
 
     def set_iteration(self, n: int) -> None:
@@ -68,6 +69,11 @@ class StatusBar(Static):
         self._error = message
         self._refresh_label()
 
+    def set_permission_mode(self, label: str) -> None:
+        """Show the active permission mode (e.g. 'auto', 'edit', 'plan')."""
+        self._permission = label
+        self._refresh_label()
+
     def _refresh_label(self) -> None:
         # NB: named _refresh_label, NOT _render — Textual's Widget._render() is a
         # reserved internal that must return a Visual; overriding it with a
@@ -86,5 +92,6 @@ class StatusBar(Static):
             state = f"done ({self._iter} iters)"
         else:
             state = f"iter {self._iter}/{self._max}"
-        line = f" {self._model}  •  {state}  •  {elapsed}s"
+        perm = f"  •  {self._permission}" if self._permission else ""
+        line = f" {self._model}{perm}  •  {state}  •  {elapsed}s"
         self.update(Text(line, style=self._color))

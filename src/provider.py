@@ -58,6 +58,13 @@ def _thinking_kwargs(model: str) -> dict:
 # AGENT_MAX_TOKENS), so the provider is configurable without touching this file.
 USE_CLAUDE_CLI = os.environ.get("USE_CLAUDE_CLI_LLM", "") == "1"
 
+# Permission mode for the `claude -p` subprocess. In print mode the CLI cannot
+# show an interactive approval prompt, so without a permission mode every write
+# and bash call is denied ("I need permission..."). Default to bypassPermissions
+# to mirror this project's own default posture (AGENT_PERMISSION_MODE=auto);
+# override with CLAUDE_CLI_PERMISSION_MODE (e.g. acceptEdits) for a stricter run.
+CLI_PERMISSION_MODE = os.environ.get("CLAUDE_CLI_PERMISSION_MODE", "bypassPermissions")
+
 
 def _chunk(content=None, finish_reason=None, tool_calls=None, thinking=None, signature=None):
     """Build one OpenAI-format streaming chunk the agent loop understands.
@@ -200,6 +207,8 @@ async def _claude_cli_stream(
         "stream-json",
         "--verbose",
         "--include-partial-messages",
+        "--permission-mode",
+        CLI_PERMISSION_MODE,
     ]
     if model:
         cmd += ["--model", model]

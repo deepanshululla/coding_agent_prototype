@@ -142,6 +142,51 @@ def _status_text(bar: StatusBar) -> Text | str:
     return bar._Static__content  # ty: ignore[unresolved-attribute]  (Textual private)
 
 
+# ── Permission-mode cycling ──────────────────────────────────────────────────
+
+
+def test_shift_tab_cycles_permission_mode(monkeypatch):
+    """shift+tab cycles auto -> edit -> plan -> auto, and the chosen mode is
+    pushed to provider.CLI_PERMISSION_MODE so the next CLI turn picks it up."""
+    import provider
+
+    monkeypatch.setattr(provider, "CLI_PERMISSION_MODE", "bypassPermissions")
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.permission_mode == "bypassPermissions"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.permission_mode == "acceptEdits"
+            assert provider.CLI_PERMISSION_MODE == "acceptEdits"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.permission_mode == "plan"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.permission_mode == "bypassPermissions"  # wraps around
+
+    asyncio.run(_run())
+
+
+def test_status_bar_shows_permission_mode():
+    """The status bar renders the friendly permission-mode label."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            bar = app.query_one(StatusBar)
+            bar.set_permission_mode("edit")
+            await pilot.pause()
+            content = _status_text(bar)
+            text = content.plain if isinstance(content, Text) else str(content)
+            assert "edit" in text
+
+    asyncio.run(_run())
+
+
 # ── Quit bindings ────────────────────────────────────────────────────────────
 
 

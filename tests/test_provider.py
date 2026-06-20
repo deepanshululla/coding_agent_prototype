@@ -189,6 +189,10 @@ async def test_claude_cli_stream_chunk_shape(monkeypatch):
     assert "-p" in spawned["args"]
     assert "--output-format" in spawned["args"]
     assert "stream-json" in spawned["args"]
+    # A permission mode is passed so the print-mode subprocess can write/run
+    # without an interactive prompt it cannot show.
+    assert "--permission-mode" in spawned["args"]
+    assert provider.CLI_PERMISSION_MODE in spawned["args"]
 
     # Every chunk is the OpenAI-format shape the loop reads.
     for c in chunks:
@@ -201,3 +205,32 @@ async def test_claude_cli_stream_chunk_shape(monkeypatch):
 
     # The final chunk carries a finish_reason so the loop terminates the turn.
     assert chunks[-1].choices[0].finish_reason == "stop"
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_stream_permission_mode_is_overridable(monkeypatch):
+    """CLI_PERMISSION_MODE (from CLAUDE_CLI_PERMISSION_MODE) sets --permission-mode."""
+    spawned = {}
+
+    class FakeStdout:
+        async def readline(self):
+            return b""
+
+    class FakeProc:
+        stdout = FakeStdout()
+
+        async def wait(self):
+            return 0
+
+    async def fake_exec(*args, **kwargs):
+        spawned["args"] = args
+        return FakeProc()
+
+    monkeypatch.setattr(provider.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(provider, "CLI_PERMISSION_MODE", "acceptEdits")
+
+    async for _ in provider._claude_cli_stream([{"role": "user", "content": "hi"}], "sp"):
+        pass
+
+    args = spawned["args"]
+    assert args[args.index("--permission-mode") + 1] == "acceptEdits"
