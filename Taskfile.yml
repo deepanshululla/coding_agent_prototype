@@ -1,9 +1,10 @@
-# Taskfile for the Coding Agent From Scratch documentation site.
+# Taskfile for the Coding Agent From Scratch project (agent + docs site).
 # Uses go-task: https://taskfile.dev  —  install with `brew install go-task`.
 #
 # Quick start:
+#   task tui           # launch the agent in the full-screen Textual UI
+#   task agent -- "summarize src/tools.py"   # run the agent in the terminal
 #   task docs:dev      # install deps if needed, then serve with hot reload
-#   task docs:build    # produce a static site in website/build
 #
 # Run `task` with no args to list everything.
 version: "3"
@@ -17,6 +18,20 @@ tasks:
     cmds:
       - task --list
     silent: true
+
+  agent:
+    desc: Run the agent in the terminal (stdout). Pass a task after `--`, e.g. `task agent -- "fix the bug in tools.py"`; with no task it prompts interactively.
+    interactive: true
+    cmds:
+      - uv run main.py {{.CLI_ARGS}}
+
+  tui:
+    desc: Launch the agent in the full-screen Textual UI. Pass a task after `--`, e.g. `task tui -- "summarize src/tools.py"`; with no task it prompts interactively.
+    interactive: true
+    env:
+      AGENT_UI: tui
+    cmds:
+      - uv run main.py {{.CLI_ARGS}}
 
   docs:install:
     desc: Install the documentation site's npm dependencies
