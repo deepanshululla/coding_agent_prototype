@@ -6,6 +6,10 @@ description: After the agent finishes a task, inject a follow-up message into th
 
 # Phase 15 — Steering
 
+:::note Implemented
+This step is implemented on branch `step/phase-15-steering` (plan: `plans/tutorial/phase-15-steering.md`).
+:::
+
 :::note Starting point
 The fully interfaced agent from Phase 14. It has a terminal UI, an SDK, RPC mode, and a JSON event stream. You have a complete, hardened, extensible, multi-interface coding agent.
 :::
