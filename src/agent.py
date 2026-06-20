@@ -40,6 +40,7 @@ async def run_agent(
     before_tool_call=None,
     after_tool_call=None,
     model: str | None = None,
+    get_steering_messages=None,
 ) -> list[dict]:
     """Run the agent on task and return the final message history.
 
@@ -68,6 +69,16 @@ async def run_agent(
     model, when provided (Phase 13.6), overrides the configured MODEL for this
     run — it is threaded straight to stream_response so the agent loop itself is
     provider-agnostic. When None (the default) the configured MODEL is used.
+
+    get_steering_messages, when provided (Phase 15), is an async callable taking
+    no arguments and returning a list of message dicts. After the inner tool-call
+    cycle finishes, the outer loop awaits it; any returned messages are appended
+    to pending_messages, flushed into the conversation at the top of the next
+    inner-loop pass, and the agent continues from where it left off (prior tool
+    calls are NOT replayed). Returning an empty list ends the run. The loop does
+    not know whether messages come from a stdin reader, an asyncio.Queue, an RPC
+    signal, or a test fixture — it only sees a list. When None (the default) the
+    outer loop runs exactly once, preserving backward compatibility.
 
     cancel_event, when provided (Phase 10.5), is an asyncio.Event the TUI sets
     on Ctrl-C. It is checked at the top of each inner-loop pass; if set, it is
@@ -98,6 +109,12 @@ async def run_agent(
 
             iteration += 1
             logger.debug("iteration {}/{}", iteration, MAX_ITERATIONS)
+
+            # Flush any steering follow-ups before the next model call so a
+            # message injected after a tool batch is seen by the model.
+            if pending_messages:
+                messages.extend(pending_messages)
+                pending_messages.clear()
 
             # ── Phase A: stream the model response, accumulating as we go. ──
             text_buf = ""
@@ -198,7 +215,18 @@ async def run_agent(
                     }
                 )
 
-        break  # outer loop: no follow-up support yet
+        # ── Steering poll (Phase 15) ──────────────────────────────────────
+        # The inner loop has finished (the model stopped or the iteration cap
+        # was hit). Ask the caller for follow-up messages. If any arrive, they
+        # land in pending_messages, get flushed at the top of the next inner
+        # pass, and the agent continues — prior tool calls are not replayed.
+        # No callable, or an empty return, ends the run.
+        if get_steering_messages is not None:
+            new_messages = await get_steering_messages()
+            if new_messages:
+                pending_messages.extend(new_messages)
+        if not pending_messages:
+            break
 
     logger.info("agent finished after {} iteration(s)", iteration)
     emit({"type": "agent_end", "total_iterations": iteration, "status": "ok"})
