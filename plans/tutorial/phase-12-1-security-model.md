@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-12-1-security-model
 
 # Phase 12.1 — The Security Model
 
