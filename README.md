@@ -24,6 +24,24 @@ Swap providers by changing one string (`MODEL` in `src/provider.py`):
 `claude-sonnet-4-5` → Anthropic, `gemini/gemini-2.0-flash` → Google, `gpt-4o` → OpenAI.
 Set the matching API key (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`).
 
+### Architectures
+
+The agent's control-flow strategy is pluggable. Pick one per run with
+`--architecture` (or the `AGENT_ARCHITECTURE` env var); unknown names fall back
+to `reactive` with a warning.
+
+```bash
+uv run main.py --architecture reactive            "fix the bug in tools.py"   # default single loop
+uv run main.py --architecture orchestrator-worker "audit the whole src/ tree" # split → workers → synthesize
+uv run main.py --architecture evaluator-optimizer "write a tricky regex"      # answer → critic → revise
+uv run main.py --architecture planner-executor    "scaffold a new feature"    # plan → run steps in order
+```
+
+All four compose the same primitives (`stream_turn`, `execute_tools`); the
+alternates trade extra model calls for decomposition, self-critique, or
+up-front planning. Add your own by subclassing `AgentArchitecture` and decorating
+it with `@register("name")` in `src/architectures/`.
+
 ## Layout
 
 ```
@@ -32,7 +50,9 @@ src/
   tools.py     # 7 tools: read/write/edit_file, bash, grep, find_files, list_dir
   prompts.py   # build_system_prompt(cwd, extra) — dynamic CWD + date + tool list
   provider.py  # stream_response() — one litellm.acompletion stream, any provider
-  agent.py     # run_agent() — the inner/outer loop, streaming accumulation, parallel tools
+  agent.py     # run_agent() facade + stream_turn/execute_tools primitives + ReactiveAgent
+  architecture.py    # AgentArchitecture Protocol, RunContext, registry (the pluggable seam)
+  architectures/     # orchestrator-worker, evaluator-optimizer, planner-executor
 main.py        # CLI entrypoint
 tests/         # test_tools.py (units), test_agent.py (loop with a mocked model)
 ```

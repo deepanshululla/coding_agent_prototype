@@ -22,8 +22,7 @@ _PLAN_PROMPT = (
     "as a single line.\n\nTask: {task}"
 )
 _STEP_PROMPT = (
-    "{step}\n\nThis is part of the larger task: {task}\n\n"
-    "Results of earlier steps:\n{prior}"
+    "{step}\n\nThis is part of the larger task: {task}\n\nResults of earlier steps:\n{prior}"
 )
 
 

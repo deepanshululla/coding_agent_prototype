@@ -73,7 +73,8 @@ def register(name: str) -> Callable[[type], type]:
     the instance to the registry. Returns the class unchanged."""
 
     def deco(cls: type) -> type:
-        cls.name = name  # type: ignore[attr-defined]
+        # Stamp the registry key onto the class so instance.name matches.
+        cls.name = name  # ty: ignore[unresolved-attribute]
         ARCHITECTURES[name] = cls()
         return cls
 

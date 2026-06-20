@@ -1,4 +1,4 @@
-Status: not started
+Status: done
 
 # Pluggable agent architectures — make the loop strategy a swappable component
 
