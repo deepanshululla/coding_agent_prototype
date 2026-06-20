@@ -6,6 +6,10 @@ description: Tool-call arguments arrive as partial JSON across chunks — buffer
 
 # Phase 5 — Streaming Tool Calls
 
+:::note Implemented
+This step is implemented on branch `step/phase-05-streaming-tool-calls` (plan: `plans/tutorial/phase-05-streaming-tool-calls.md`).
+:::
+
 :::note Starting point
 Phase 4's loop with one `read_file` tool, assuming each tool call arrives whole. This phase handles the realistic case: arguments split across stream chunks.
 :::
