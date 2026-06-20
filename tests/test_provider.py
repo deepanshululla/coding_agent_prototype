@@ -234,3 +234,37 @@ async def test_claude_cli_stream_permission_mode_is_overridable(monkeypatch):
 
     args = spawned["args"]
     assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+
+
+# ── _messages_to_prompt: multimodal / list content (CLI fork is text-only) ───
+
+
+def test_messages_to_prompt_flattens_list_content():
+    """A multimodal user message (text + image blocks) must not crash the
+    text-only CLI fork: text parts are kept, image blocks become a placeholder.
+
+    BDD: Given a user message whose content is a list of {type:text} and
+    {type:image_url} blocks, When _messages_to_prompt renders it, Then the text
+    survives and the image is replaced with a clear '[image omitted ...]' note.
+    """
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "what is this?"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,QUJD"}},
+            ],
+        }
+    ]
+    prompt = provider._messages_to_prompt("sys", messages)
+    assert "what is this?" in prompt
+    assert "image omitted" in prompt
+    # The raw base64 payload must never leak into the flattened text prompt.
+    assert "QUJD" not in prompt
+
+
+def test_messages_to_prompt_plain_string_unchanged():
+    """A plain-string content message renders exactly as before (no regression)."""
+    prompt = provider._messages_to_prompt("sys", [{"role": "user", "content": "hello"}])
+    assert "User: hello" in prompt
+    assert "System: sys" in prompt

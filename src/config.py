@@ -28,6 +28,13 @@ def _csv(name: str, default: list[str]) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
 # ── Model / provider ─────────────────────────────────────────────────────────
 MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")
 MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
@@ -62,3 +69,11 @@ PERMISSION_MODE = os.environ.get("AGENT_PERMISSION_MODE", "auto")
 UI = os.environ.get("AGENT_UI", "stdout")
 THEME = os.environ.get("AGENT_THEME", "dark")
 MCP_CONFIG = os.environ.get("AGENT_MCP_CONFIG")
+
+# Ctrl+V image paste in the TUI. A terminal never sends image bytes on Ctrl+V —
+# the key is a trigger to read the OS clipboard (see tui/clipboard.py). Enabled
+# by default; set AGENT_IMAGE_PASTE=0 to unbind it. IMAGE_MAX_BYTES caps the
+# clipboard image we will attach (default 5 MB) so an oversized paste is rejected
+# with a hint instead of bloating the request.
+IMAGE_PASTE = _bool("AGENT_IMAGE_PASTE", True)
+IMAGE_MAX_BYTES = _int("AGENT_IMAGE_MAX_BYTES", 5 * 1024 * 1024)

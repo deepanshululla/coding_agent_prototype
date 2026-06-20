@@ -18,3 +18,7 @@ website/build/
 .env
 .pytest_cache/
 .task/
+
+# Agent worktrees (isolated checkouts created by the agent harness; never part
+# of this repo's sources or type-checks).
+.claude/worktrees/

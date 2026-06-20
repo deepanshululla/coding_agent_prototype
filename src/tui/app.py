@@ -21,6 +21,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.reactive import reactive
 
+import config
 import provider
 from tui.components.input_box import InputBox
 from tui.components.status_bar import StatusBar
@@ -60,6 +61,10 @@ class AgentApp(App):
         # shift+tab cycles the permission mode (auto / edit / plan). priority so
         # it works even while the input box has focus.
         Binding("shift+tab", "cycle_permission", "Perm mode", show=True, priority=True),
+        # ctrl+v reads an image off the OS clipboard and attaches it to the next
+        # steering message. priority so it fires even while the input box has
+        # focus; gated off via check_action when AGENT_IMAGE_PASTE is disabled.
+        Binding("ctrl+v", "paste_image", "Paste image", show=True, priority=True),
     ]
 
     # Words that, when submitted in the input box, quit instead of steering.
@@ -113,6 +118,10 @@ class AgentApp(App):
         self.theme_dict = get_theme(os.getenv("AGENT_THEME", "dark"))
         # Hot reload mode: when enabled, file watcher restarts the app on changes.
         self._hot_reload = hot_reload
+        # Image content blocks pasted via Ctrl+V, awaiting the next submit. Each
+        # is an OpenAI-style {"type": "image_url", ...} block folded into the
+        # user message on Enter; cleared once that message is sent.
+        self._pending_images: list[dict] = []
 
     def check_action(self, action: str, parameters: object) -> bool:
         # Scroll motions only fire in NORMAL; INSERT owns the keyboard for typing
@@ -123,6 +132,9 @@ class AgentApp(App):
             "scroll_top",
             "scroll_bottom",
         }:
+            return False
+        # Ctrl+V image paste is gated off when AGENT_IMAGE_PASTE is disabled.
+        if action == "paste_image" and not config.IMAGE_PASTE:
             return False
         return True
 
@@ -293,6 +305,36 @@ class AgentApp(App):
                 return label
         return self.permission_mode
 
+    # ── Image paste action (ctrl+v) ───────────────────────────────────────────
+
+    def action_paste_image(self) -> None:
+        """Read an image off the OS clipboard and buffer it for the next submit.
+
+        The terminal does not transmit the image on Ctrl+V — this pulls it from
+        the clipboard (tui.clipboard) and stores an image_url content block. The
+        block is folded into the user message when the user presses Enter. A
+        missing image or an oversized one is reported on the status bar and never
+        buffered.
+        """
+        from tui.clipboard import read_clipboard_image, to_data_url
+
+        result = read_clipboard_image()
+        if result is None:
+            self.query_one(StatusBar).set_hint("no image in clipboard")
+            return
+        data, mime = result
+        if len(data) > config.IMAGE_MAX_BYTES:
+            self.query_one(StatusBar).set_hint(
+                f"image too large ({len(data)} > {config.IMAGE_MAX_BYTES} bytes)"
+            )
+            return
+        self._pending_images.append(
+            {"type": "image_url", "image_url": {"url": to_data_url(data, mime)}}
+        )
+        n = len(self._pending_images)
+        self.query_one(TranscriptPane).append_user_text(f"\n[image {n} attached]\n")
+        self.query_one(StatusBar).set_hint(f"image {n} attached — add a message and press Enter")
+
     def trigger_reload(self) -> None:
         """Trigger a hot reload: save state, log to transcript, then restart the process."""
         from datetime import datetime
@@ -327,7 +369,15 @@ class AgentApp(App):
         if message.text.strip().lower() in self._QUIT_WORDS:
             self._do_quit()
             return
-        msg = {"role": "user", "content": message.text}
+        # When images are buffered (Ctrl+V), send multimodal list content — text
+        # block first, then each image block — and clear the buffer. With none,
+        # content stays a plain string so the non-image path is unchanged.
+        if self._pending_images:
+            content: object = [{"type": "text", "text": message.text}, *self._pending_images]
+            self._pending_images = []
+        else:
+            content = message.text
+        msg = {"role": "user", "content": content}
         self._steering.put_nowait(msg)
         self._pending.append(msg)
         # Echo the user message in the transcript so they can see it.
