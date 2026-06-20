@@ -6,6 +6,10 @@ description: Run multiple tool calls from a single model turn concurrently using
 
 # Phase 7 — Parallel Tool Execution
 
+:::note Implemented
+This step is implemented on branch `step/phase-07-parallel-tools` (plan: `plans/tutorial/phase-07-parallel-tools.md`).
+:::
+
 :::note Starting point
 Phase 6's seven-tool registry, executed one tool at a time. This phase runs a turn's tools concurrently.
 :::

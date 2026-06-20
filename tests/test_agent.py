@@ -234,3 +234,63 @@ async def test_run_agent_passes_full_history_to_model(monkeypatch):
     assert received_messages[0] == {"role": "user", "content": "hello"}
     # The system prompt must be a non-empty string on every call.
     assert all(isinstance(p, str) and p for p in system_prompts)
+
+
+@pytest.mark.asyncio
+async def test_parallel_dispatch_two_tools(monkeypatch, tmp_path):
+    """Two read_file calls in one turn both run and land as role:tool messages,
+    each addressed to its own tool_call_id, before the next assistant turn."""
+    a = tmp_path / "a.txt"
+    a.write_text("content-alpha")
+    b = tmp_path / "b.txt"
+    b.write_text("content-beta")
+
+    # Turn 1: model requests read_file on both files in a single streaming turn.
+    turn1 = [
+        _chunk(
+            tool_calls=[
+                _tc(0, id="c0", name="read_file", arguments=f'{{"path": "{a}"}}'),
+                _tc(1, id="c1", name="read_file", arguments=f'{{"path": "{b}"}}'),
+            ]
+        ),
+        _chunk(finish_reason="tool_calls"),
+    ]
+    # Turn 2: plain-text final answer.
+    turn2 = [_chunk(content="Read both files."), _chunk(finish_reason="stop")]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2]))
+
+    messages = await agent.run_agent("read a.txt and b.txt")
+
+    # Exactly two role:tool messages, in request order, before the final assistant.
+    tool_msgs = [m for m in messages if m["role"] == "tool"]
+    assert len(tool_msgs) == 2
+    assert tool_msgs[0]["tool_call_id"] == "c0"
+    assert "content-alpha" in tool_msgs[0]["content"]
+    assert tool_msgs[1]["tool_call_id"] == "c1"
+    assert "content-beta" in tool_msgs[1]["content"]
+    # The final answer is the scripted plain text.
+    assert messages[-1]["content"] == "Read both files."
+
+
+@pytest.mark.asyncio
+async def test_unknown_tool_returns_error_not_raise(monkeypatch):
+    """An unknown tool name yields an error role:tool message rather than
+    crashing the loop, and run_agent still returns the scripted final answer."""
+    turn1 = [
+        _chunk(
+            tool_calls=[
+                _tc(0, id="c0", name="no_such_tool", arguments="{}"),
+            ]
+        ),
+        _chunk(finish_reason="tool_calls"),
+    ]
+    turn2 = [_chunk(content="All done."), _chunk(finish_reason="stop")]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2]))
+
+    messages = await agent.run_agent("call an unknown tool")
+
+    tool_msgs = [m for m in messages if m["role"] == "tool"]
+    assert len(tool_msgs) == 1
+    assert tool_msgs[0]["tool_call_id"] == "c0"
+    assert "Unknown tool" in tool_msgs[0]["content"]
+    assert messages[-1]["content"] == "All done."
