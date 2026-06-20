@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
+from compaction import compact_if_needed
 from config import MAX_ITERATIONS
 from logging_config import logger
 from policy import PolicyEngine
@@ -117,12 +118,19 @@ async def run_agent(
                 pending_messages.clear()
 
             # ── Phase A: stream the model response, accumulating as we go. ──
+            # Compaction gate (Phase 16): compact_if_needed returns a context
+            # that fits the window without ever mutating the source-of-truth
+            # `messages` list. Below the threshold it returns `messages`
+            # unchanged; above it, a new, shorter list. We send the compacted
+            # view to the model but keep growing `messages` as the real history.
+            context_to_send = await compact_if_needed(messages, system_prompt)
+
             text_buf = ""
             tool_acc: dict[int, dict] = {}
             finish_reason = None
 
             async for chunk in stream_response(
-                messages=messages,
+                messages=context_to_send,
                 system_prompt=system_prompt,
                 model=model,
             ):
