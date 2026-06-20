@@ -6,6 +6,10 @@ description: Compose the agent's behavior from named instruction blocks selected
 
 # Layer 13.3 — Skills
 
+:::note Implemented
+This step is implemented on branch `step/phase-13-3-skills` (plan: `plans/tutorial/phase-13-3-skills.md`).
+:::
+
 :::note Starting point
 Layer 13.2 complete: `extra` carries project instructions plus an optional per-session override; `beforeToolCall`/`afterToolCall` hooks are wired in. The test suite passes.
 :::

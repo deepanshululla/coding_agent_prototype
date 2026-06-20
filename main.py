@@ -24,6 +24,42 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 
+def _extract_skills(args: list[str]) -> tuple[list[str], list[str] | None]:
+    """Pull a ``--skills`` flag out of ``args``, returning the remaining args
+    (the task tokens) and the resolved skill list.
+
+    The flag accepts comma- *or* space-separated skill names that immediately
+    follow it, stopping at the first token that is itself a flag (starts with
+    ``--``) or that contains whitespace — a whitespace-bearing token is taken to
+    be the task string, not a skill name. This keeps a multi-word task that
+    follows ``--skills`` unambiguous, e.g.::
+
+        main.py --skills explain "walk me through the loop"
+
+    Returns ``None`` for the skill list when the flag is absent (caller falls
+    back to the env-driven ``ACTIVE_SKILLS``); returns ``[]`` when the flag is
+    present with no names (a bare prompt).
+    """
+    if "--skills" not in args:
+        return args, None
+
+    idx = args.index("--skills")
+    remaining = args[:idx]
+    skills: list[str] = []
+    rest = args[idx + 1 :]
+    i = 0
+    while i < len(rest):
+        token = rest[i]
+        # A flag or a whitespace-bearing token (the task) ends the skill list;
+        # everything from here on is a task token, kept verbatim.
+        if token.startswith("--") or (token.split() != [token]):
+            break
+        skills.extend(s.strip() for s in token.split(",") if s.strip())
+        i += 1
+    remaining.extend(rest[i:])
+    return remaining, skills
+
+
 def main() -> None:
     load_dotenv()
 
@@ -34,6 +70,12 @@ def main() -> None:
     setup_logging()
 
     args = sys.argv[1:]
+
+    # --skills (Layer 13.3): activate a named set of instruction blocks for this
+    # session. Consumes the values that follow it until the next flag or end of
+    # argv, and overrides the AGENT_SKILLS env var. `active_skills is None` means
+    # "fall back to ACTIVE_SKILLS"; an empty list means "no skills" (bare prompt).
+    args, active_skills = _extract_skills(args)
 
     # --sandbox: run inside a throwaway git worktree (Layer 12.4). The flag must
     # be the first argument; everything after it is the task.
@@ -71,7 +113,7 @@ def main() -> None:
     extra = "\n\n".join(
         filter(None, [load_project_instructions(cwd), session_override])
     )
-    system_prompt = build_system_prompt(cwd=cwd, extra=extra)
+    system_prompt = build_system_prompt(cwd=cwd, extra=extra, skills=active_skills)
 
     if os.getenv("AGENT_UI", "stdout") == "tui":
         from tui import run

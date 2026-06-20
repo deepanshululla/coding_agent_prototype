@@ -9,10 +9,22 @@ from __future__ import annotations
 import os
 from datetime import date
 
+from skills import ACTIVE_SKILLS, SKILLS
 
-def build_system_prompt(cwd: str | None = None, extra: str = "") -> str:
+
+def build_system_prompt(
+    cwd: str | None = None,
+    extra: str = "",
+    skills: list[str] | None = None,
+) -> str:
     cwd = cwd or os.getcwd()
     today = date.today().isoformat()
+
+    # Resolve the active skill set: an explicit list (e.g. from the --skills
+    # flag) overrides the env-driven ACTIVE_SKILLS default. An empty list means
+    # "no skills" — a bare prompt. Unknown names are silently skipped.
+    active = skills if skills is not None else ACTIVE_SKILLS
+    skill_blocks = "\n".join(SKILLS[s] for s in active if s in SKILLS)
 
     return f"""You are an expert coding assistant running inside a terminal agent harness.
 You help users by reading files, executing shell commands, editing code, and writing new files.
@@ -25,6 +37,7 @@ You help users by reading files, executing shell commands, editing code, and wri
 - grep: Search for text patterns across files
 - find_files: Find files by name pattern
 - list_dir: List directory contents
+{skill_blocks}
 
 ## Guidelines
 - Start by understanding the task. Use read_file or list_dir to explore before making changes.
