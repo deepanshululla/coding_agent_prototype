@@ -6,6 +6,10 @@ description: Emit each agent loop phase as a newline-delimited JSON event so log
 
 # Layer 14.3 — JSON Event Stream
 
+:::note Implemented
+This step is implemented on branch `step/phase-14-3-json-event-stream` (plan: `plans/tutorial/phase-14-3-json-event-stream.md`).
+:::
+
 :::note Starting point
 Layer 14.2 complete: `rpc_server.py` and `http_server.py` exist. The HTTP streaming endpoint in `http_server.py` is a stub — it emits only a single `agent_end` event. The emit() seam from Phase 10 fires events but routes them to the active renderer, not to the network.
 :::

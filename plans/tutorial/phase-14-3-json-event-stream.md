@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-14-3-json-event-stream
 
 # Phase 14.3 — JSON Event Stream
 
