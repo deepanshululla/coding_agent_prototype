@@ -49,7 +49,7 @@ def test_env_var_enables_hot_reload(monkeypatch):
 def test_state_serialization(tmp_path):
     """save_tui_state and load_tui_state should round-trip."""
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from tui.hot_reload import save_tui_state, load_tui_state
+    from tui.hot_reload import load_tui_state, save_tui_state
 
     # Create a mock app with minimal state
     mock_app = Mock()
@@ -75,8 +75,9 @@ def test_state_serialization(tmp_path):
 def test_load_missing_state():
     """load_tui_state should return None when no state file exists."""
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from tui.hot_reload import load_tui_state
     import glob
+
+    from tui.hot_reload import load_tui_state
 
     # Clean up any existing state
     for f in glob.glob("/tmp/tui-hot-reload-state-*.json"):

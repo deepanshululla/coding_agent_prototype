@@ -153,8 +153,9 @@ class AgentApp(App):
 
         # Hot reload: restore state from previous run if available
         if self._hot_reload:
-            from tui.hot_reload import load_tui_state
             from datetime import datetime
+
+            from tui.hot_reload import load_tui_state
 
             state = load_tui_state()
             if state:
@@ -294,8 +295,9 @@ class AgentApp(App):
 
     def trigger_reload(self) -> None:
         """Trigger a hot reload: save state, log to transcript, then restart the process."""
-        from tui.hot_reload import save_tui_state, do_reload
         from datetime import datetime
+
+        from tui.hot_reload import do_reload, save_tui_state
 
         # Log reload notification
         timestamp = datetime.now().strftime("%H:%M:%S")
