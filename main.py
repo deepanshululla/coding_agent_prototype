@@ -26,6 +26,13 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 def main() -> None:
     load_dotenv()
+
+    # Configure loguru before importing any module that imports `logger`.
+    # Reads AGENT_LOG_LEVEL (default INFO); diagnostics go to stderr.
+    from logging_config import setup_logging
+
+    setup_logging()
+
     args = sys.argv[1:]
 
     # --sandbox: run inside a throwaway git worktree (Layer 12.4). The flag must

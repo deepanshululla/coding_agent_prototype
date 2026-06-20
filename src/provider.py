@@ -6,10 +6,8 @@ from typing import Any
 
 import litellm
 
+from config import MAX_TOKENS, MODEL
 from tools import TOOLS_SCHEMA
-
-MODEL = "claude-sonnet-4-5"  # prefix selects provider; change to swap (e.g. "gpt-4o")
-MAX_TOKENS = 8096
 
 
 def _chunk(content=None, finish_reason=None, tool_calls=None):

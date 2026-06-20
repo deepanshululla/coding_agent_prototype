@@ -19,10 +19,9 @@ import os
 import subprocess
 from pathlib import Path
 
-# Caps that keep tool output from blowing the context window.
-BASH_TIMEOUT = 30
-BASH_OUTPUT_LIMIT = 10_000
-FIND_LIMIT = 200
+# Caps that keep tool output from blowing the context window. Resolved values
+# (defaults + AGENT_* overrides) live in config.py — the single source of truth.
+from config import BASH_OUTPUT_LIMIT, BASH_TIMEOUT, FIND_LIMIT, READ_LIMIT
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -34,7 +33,7 @@ def _truncate(text: str, limit: int) -> str:
 # ── read_file ────────────────────────────────────────────────────────────────
 
 
-async def read_file(path: str, offset: int = 0, limit: int = 2000) -> str:
+async def read_file(path: str, offset: int = 0, limit: int = READ_LIMIT) -> str:
     """Read a file, optionally a window of ``limit`` lines starting at ``offset``."""
 
     def _read() -> str:

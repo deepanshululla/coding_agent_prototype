@@ -77,18 +77,19 @@ def test_stdout_renderer_is_byte_for_byte_identical(monkeypatch, tmp_path, capsy
     messages = asyncio.run(agent.run_agent("read hello.txt"))
     captured = capsys.readouterr().out
 
-    # Reconstruct the expected transcript independently from the StdoutRenderer's
-    # documented format for the same sequence of events.
+    # Layer 12.5 moved tool lifecycle markers (▸, [✓ ...]) off stdout to loguru
+    # on stderr, so stdout now carries only the model's streamed text plus the
+    # per-turn newline. A redirect of stdout captures pure model output.
     expected = (
         "Let me read "          # text_delta
         "that file."            # text_delta
-        "\n▸ read_file"         # tool_call_start
         "\n"                    # turn_end (newline after streamed turn)
-        f"  [✓ read_file: {file_chars} chars]\n"  # tool_call_end
         "The file says hello."  # text_delta (turn 2)
         "\n"                    # turn_end (turn 2)
     )
     assert captured == expected
+    assert "▸" not in captured
+    assert "[✓" not in captured
 
     # And the final message history carries the same assistant and tool messages.
     assert messages[1]["tool_calls"][0]["function"]["name"] == "read_file"
@@ -100,7 +101,15 @@ def test_stdout_renderer_is_byte_for_byte_identical(monkeypatch, tmp_path, capsy
 
 
 def test_unknown_tool_emits_error_tool_call_end(monkeypatch, capsys):
-    """An unknown tool emits tool_call_end with is_error=True, rendered with ✗."""
+    """An unknown tool still emits a tool_call_end event with is_error=True; the
+    stdout renderer no longer prints a marker for it (Layer 12.5 moved tool
+    diagnostics to loguru on stderr), so the error surfaces via the returned
+    ToolResult and the logger, not stdout."""
+    events: list[dict] = []
+    import renderer
+    monkeypatch.setattr(renderer, "emit", events.append)
+    monkeypatch.setattr(agent, "emit", events.append)
+
     turn1 = [
         _chunk(tool_calls=[_tc(0, id="c0", name="no_such_tool", arguments="{}")]),
         _chunk(finish_reason="tool_calls"),
@@ -111,4 +120,7 @@ def test_unknown_tool_emits_error_tool_call_end(monkeypatch, capsys):
     asyncio.run(agent.run_agent("call an unknown tool"))
     captured = capsys.readouterr().out
 
-    assert "✗ no_such_tool: 0 chars" in captured
+    end_events = [e for e in events if e["type"] == "tool_call_end"]
+    assert any(e["is_error"] and e["name"] == "no_such_tool" for e in end_events)
+    # The error marker no longer appears on stdout.
+    assert "✗ no_such_tool" not in captured
