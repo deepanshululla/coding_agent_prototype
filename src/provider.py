@@ -9,16 +9,28 @@ from typing import Any
 MODEL_ALIAS = "sonnet"  # passed to claude --model; change to "opus" etc.
 
 
-def _chunk(content=None, finish_reason=None):
+def _chunk(content=None, finish_reason=None, tool_calls=None):
     """Build one OpenAI-format streaming chunk the agent loop understands.
 
     Uses SimpleNamespace so no provider SDK is needed. Phase 11 replaces the
     class body with litellm.acompletion, which returns real chunk objects with
-    this same shape.
+    this same shape. tool_calls (from Phase 4 on) carries a list of streamed
+    tool-call fragments, each shaped like _tc() below.
     """
-    delta = SimpleNamespace(content=content, tool_calls=None)
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
     choice = SimpleNamespace(delta=delta, finish_reason=finish_reason)
     return SimpleNamespace(choices=[choice])
+
+
+def _tc(index, id=None, name=None, arguments=None):
+    """Build one OpenAI-format tool-call delta fragment for a streaming chunk.
+
+    Mirrors the shape litellm yields in delta.tool_calls: an .index, an .id,
+    and a nested .function with .name and .arguments. Phase 4 delivers the
+    whole call in one fragment; Phase 5 splits .arguments across fragments.
+    """
+    function = SimpleNamespace(name=name, arguments=arguments)
+    return SimpleNamespace(index=index, id=id, function=function)
 
 
 class ModelClient:
