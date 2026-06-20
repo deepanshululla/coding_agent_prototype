@@ -173,6 +173,12 @@ def test_streaming_tool_call_split_arguments(monkeypatch, tmp_path):
     assert "streaming works" in tool_msg["content"]
 
 
+def test_max_iterations_is_set():
+    """Ensure the iteration cap is defined and reasonable."""
+    assert isinstance(agent.MAX_ITERATIONS, int)
+    assert 1 <= agent.MAX_ITERATIONS <= 100
+
+
 @pytest.mark.asyncio
 async def test_run_agent_returns_user_and_assistant(monkeypatch):
     """The loop should seed messages with the user turn and append exactly
