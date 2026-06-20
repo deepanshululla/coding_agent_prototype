@@ -1,0 +1,9 @@
+{
+  "label": "Phase 14 — Interface It",
+  "position": 15,
+  "link": {
+    "type": "generated-index",
+    "title": "Phase 14 — Interface It",
+    "description": "Add programmatic interfaces so the agent can be embedded in larger systems: a Python SDK, RPC mode, and a JSON event stream. Each sub-step builds on the last with its own BDD gate."
+  }
+}

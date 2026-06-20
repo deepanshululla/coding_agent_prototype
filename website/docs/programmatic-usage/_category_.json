@@ -1,0 +1,9 @@
+{
+  "label": "Programmatic Usage",
+  "position": 8,
+  "link": {
+    "type": "generated-index",
+    "title": "Programmatic Usage",
+    "description": "Drive the agent from your own code: import it as a library, expose it over RPC, or consume its JSON event stream."
+  }
+}

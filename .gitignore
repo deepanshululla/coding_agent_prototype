@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Node / Docusaurus
+node_modules/
+.docusaurus/
+website/build/
+
+# Env & caches
+.env
+.pytest_cache/
+.task/

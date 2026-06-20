@@ -1,0 +1,9 @@
+{
+  "label": "Architecture Patterns",
+  "position": 3.5,
+  "link": {
+    "type": "generated-index",
+    "title": "Architecture Patterns",
+    "description": "The design patterns that scale a coding agent from a 750-line loop to a maintainable system: plugins, ports & adapters, commands, strategies, routing, state machines, event sourcing, policy guards, planner/executor, worktrees, and permission modes."
+  }
+}

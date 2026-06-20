@@ -1,0 +1,9 @@
+{
+  "label": "Tools",
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "title": "Tools",
+    "description": "The hands of the agent: schema format, the seven built-in tools, parallel execution, error handling, and how to add your own."
+  }
+}

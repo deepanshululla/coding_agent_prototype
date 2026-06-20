@@ -1,0 +1,59 @@
+# Taskfile for the Coding Agent From Scratch documentation site.
+# Uses go-task: https://taskfile.dev  —  install with `brew install go-task`.
+#
+# Quick start:
+#   task docs:dev      # install deps if needed, then serve with hot reload
+#   task docs:build    # produce a static site in website/build
+#
+# Run `task` with no args to list everything.
+version: "3"
+
+vars:
+  WEBSITE_DIR: website
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  docs:install:
+    desc: Install the documentation site's npm dependencies
+    dir: "{{.WEBSITE_DIR}}"
+    # Only reinstall when the lockfile/manifest is newer than node_modules.
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules/.package-lock.json
+    cmds:
+      - npm install
+
+  docs:dev:
+    desc: Serve the docs locally with hot reload at http://localhost:3000
+    deps: [docs:install]
+    dir: "{{.WEBSITE_DIR}}"
+    cmds:
+      - npm run start
+
+  docs:build:
+    desc: Build the static documentation site into website/build
+    deps: [docs:install]
+    dir: "{{.WEBSITE_DIR}}"
+    cmds:
+      - npm run build
+
+  docs:serve:
+    desc: Preview the production build at http://localhost:3000 (run docs:build first)
+    deps: [docs:build]
+    dir: "{{.WEBSITE_DIR}}"
+    cmds:
+      - npm run serve
+
+  docs:clean:
+    desc: Remove the Docusaurus build output and cache
+    dir: "{{.WEBSITE_DIR}}"
+    cmds:
+      - npm run clear
+      - rm -rf build

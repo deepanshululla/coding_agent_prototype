@@ -1,0 +1,9 @@
+{
+  "label": "Core Concepts",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "title": "Core Concepts",
+    "description": "The ideas that make the loop work: system prompts, the context window, async concurrency, and the tool-call lifecycle."
+  }
+}

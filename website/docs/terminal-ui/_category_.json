@@ -1,0 +1,9 @@
+{
+  "label": "Terminal UI",
+  "position": 6.5,
+  "link": {
+    "type": "generated-index",
+    "title": "Terminal UI",
+    "description": "An opt-in full-screen terminal interface over the same agent loop: rendering the stream, components, keybindings, and themes."
+  }
+}

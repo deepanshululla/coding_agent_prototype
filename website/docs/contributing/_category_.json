@@ -1,0 +1,9 @@
+{
+  "label": "Contributing",
+  "position": 13,
+  "link": {
+    "type": "generated-index",
+    "title": "Contributing",
+    "description": "The development workflow (TDD, plan-first) and the project conventions that keep the codebase coherent."
+  }
+}

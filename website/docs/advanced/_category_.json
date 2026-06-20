@@ -1,0 +1,9 @@
+{
+  "label": "Advanced",
+  "position": 10,
+  "link": {
+    "type": "generated-index",
+    "title": "Advanced",
+    "description": "Beyond v1: steering messages mid-run, context compaction, and extended thinking."
+  }
+}

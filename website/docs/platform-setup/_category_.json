@@ -1,0 +1,9 @@
+{
+  "label": "Platform Setup",
+  "position": 12,
+  "link": {
+    "type": "generated-index",
+    "title": "Platform Setup",
+    "description": "Environment-specific notes for running the agent on Windows, Termux/Android, and under tmux, plus handy shell aliases."
+  }
+}

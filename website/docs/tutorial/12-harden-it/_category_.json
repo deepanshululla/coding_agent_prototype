@@ -1,0 +1,9 @@
+{
+  "label": "Phase 12 — Harden It",
+  "position": 13,
+  "link": {
+    "type": "generated-index",
+    "title": "Phase 12 — Harden It",
+    "description": "Make the agent safe to run, one layer at a time: the security model, a command allowlist, permission modes, sandboxing, and logging. Each sub-step builds on the last and is verified by its own BDD gate."
+  }
+}

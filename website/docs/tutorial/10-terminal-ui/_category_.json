@@ -1,0 +1,9 @@
+{
+  "label": "Phase 10 — Terminal UI",
+  "position": 11,
+  "link": {
+    "type": "generated-index",
+    "title": "Phase 10 — Terminal UI",
+    "description": "Put a terminal UI on the finished stdout agent, one layer at a time: an event seam, then a transcript, a tool panel, an input box and status bar, and finally keybindings and themes. Each layer builds on the one before and is verified by its own BDD gate — the loop never changes."
+  }
+}

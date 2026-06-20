@@ -1,0 +1,20 @@
+[project]
+name = "coding-agent-from-scratch"
+version = "0.1.0"
+description = "A real terminal coding agent in ~750 lines of Python"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "litellm>=1.51.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+# src/ is not a package (no __init__.py); put it on the path for imports.
+pythonpath = ["src"]
+testpaths = ["tests"]

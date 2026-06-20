@@ -1,0 +1,9 @@
+{
+  "label": "Tutorial: Build It Step by Step",
+  "position": 2.5,
+  "link": {
+    "type": "generated-index",
+    "title": "Tutorial — Build a Coding Agent Step by Step",
+    "description": "Construct the agent one concept at a time. Each phase is a small, runnable add-on with a test you write first and a command you run to verify it — converging on the real, tested source in this repo."
+  }
+}

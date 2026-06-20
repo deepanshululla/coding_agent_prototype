@@ -1,0 +1,71 @@
+/**
+ * Global styles for the Coding Agent From Scratch docs.
+ * Infima CSS variables drive the theme: https://infima.dev/
+ */
+
+:root {
+  --ifm-color-primary: #2563eb;
+  --ifm-color-primary-dark: #1d4ed8;
+  --ifm-color-primary-darker: #1e40af;
+  --ifm-color-primary-darkest: #1e3a8a;
+  --ifm-color-primary-light: #3b82f6;
+  --ifm-color-primary-lighter: #60a5fa;
+  --ifm-color-primary-lightest: #93c5fd;
+  --ifm-code-font-size: 95%;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, monospace;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #60a5fa;
+  --ifm-color-primary-dark: #3b82f6;
+  --ifm-color-primary-darker: #2563eb;
+  --ifm-color-primary-darkest: #1d4ed8;
+  --ifm-color-primary-light: #93c5fd;
+  --ifm-color-primary-lighter: #bfdbfe;
+  --ifm-color-primary-lightest: #dbeafe;
+  --ifm-background-color: #0d1117;
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.08);
+}
+
+/* Tighten up code blocks a touch for dense reference pages. */
+.theme-code-block {
+  font-size: 0.9rem;
+}
+
+/* The hero on the landing page. */
+.hero--agent {
+  background: radial-gradient(
+    1200px circle at 20% -10%,
+    rgba(37, 99, 235, 0.25),
+    transparent 40%
+  );
+}
+
+.hero--agent .hero__title {
+  font-size: 3rem;
+  letter-spacing: -0.02em;
+}
+
+.terminal-snippet {
+  font-family: var(--ifm-font-family-monospace);
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  text-align: left;
+  max-width: 720px;
+  margin: 2rem auto 0;
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+.terminal-snippet .prompt {
+  color: #58a6ff;
+}
+
+.terminal-snippet .comment {
+  color: #8b949e;
+}
