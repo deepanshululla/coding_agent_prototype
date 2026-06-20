@@ -1,20 +1,96 @@
+import asyncio
+
 import pytest
+
+import agent
+from provider import _chunk
+
+
+class ScriptedLLM:
+    """Test harness standing in for stream_response.
+
+    Constructed with a list of "turns"; each turn is a list of pre-built
+    chunks. Each call to the instance consumes the next turn and yields its
+    chunks as an async generator — matching stream_response's signature.
+    """
+
+    def __init__(self, turns):
+        self._turns = list(turns)
+        self._index = 0
+
+    def __call__(self, messages, system_prompt):
+        turn = self._turns[self._index]
+        self._index += 1
+
+        async def _gen():
+            for chunk in turn:
+                yield chunk
+
+        return _gen()
+
+
+def test_streaming_text_accumulates(monkeypatch):
+    """Text fragments from multiple chunks are joined into one assistant message."""
+    turns = [
+        [
+            _chunk(content="one"),
+            _chunk(content=", "),
+            _chunk(content="two"),
+            _chunk(content=", "),
+            _chunk(content="three"),
+            _chunk(finish_reason="stop"),
+        ]
+    ]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
+
+    messages = asyncio.run(agent.run_agent("count to three"))
+
+    assistant = messages[1]
+    assert assistant["role"] == "assistant"
+    assert assistant["content"] == "one, two, three"
+    assert "tool_calls" not in assistant
+
+
+def test_streaming_carries_finish_reason_forward(monkeypatch):
+    """finish_reason is carried forward from the single chunk that sets it."""
+    turns = [
+        [
+            _chunk(content="a", finish_reason=None),
+            _chunk(content="b", finish_reason=None),
+            _chunk(content="c", finish_reason=None),
+            _chunk(content="d", finish_reason=None),
+            _chunk(content="e", finish_reason=None),
+            _chunk(finish_reason="stop"),
+        ]
+    ]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
+
+    messages = asyncio.run(agent.run_agent("five letters"))
+
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "abcde"
+
+
+def test_streaming_empty_stream_terminates(monkeypatch):
+    """An empty stream with no content chunks still terminates without error."""
+    turns = [[_chunk(finish_reason="stop")]]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
+
+    messages = asyncio.run(agent.run_agent("say nothing"))
+
+    assert len(messages) == 2
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] in (None, "")
 
 
 @pytest.mark.asyncio
 async def test_run_agent_returns_user_and_assistant(monkeypatch):
     """The loop should seed messages with the user turn and append exactly
-    one assistant reply when the model returns plain text."""
-    import provider  # import the module so monkeypatch can target it
+    one assistant reply when the model streams plain text."""
+    turns = [[_chunk(content="Hi! How can I help?"), _chunk(finish_reason="stop")]]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
 
-    async def fake_call_model(messages, system_prompt):
-        return "Hi! How can I help?"
-
-    monkeypatch.setattr(provider, "call_model", fake_call_model)
-
-    from agent import run_agent
-
-    history = await run_agent("say hi")
+    history = await agent.run_agent("say hi")
 
     assert len(history) == 2
     assert history[0] == {"role": "user", "content": "say hi"}
@@ -25,20 +101,18 @@ async def test_run_agent_returns_user_and_assistant(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_agent_stops_after_text_reply(monkeypatch):
     """The loop must stop after a single text reply — no further calls."""
-    import provider
-
     call_count = 0
 
-    async def counting_call_model(messages, system_prompt):
-        nonlocal call_count
-        call_count += 1
-        return "Done."
+    class CountingLLM(ScriptedLLM):
+        def __call__(self, messages, system_prompt):
+            nonlocal call_count
+            call_count += 1
+            return super().__call__(messages, system_prompt)
 
-    monkeypatch.setattr(provider, "call_model", counting_call_model)
+    turns = [[_chunk(content="Done."), _chunk(finish_reason="stop")]]
+    monkeypatch.setattr(agent, "stream_response", CountingLLM(turns))
 
-    from agent import run_agent
-
-    await run_agent("do something")
+    await agent.run_agent("do something")
 
     assert call_count == 1, f"Expected 1 model call, got {call_count}"
 
@@ -47,24 +121,22 @@ async def test_run_agent_stops_after_text_reply(monkeypatch):
 async def test_run_agent_passes_full_history_to_model(monkeypatch):
     """Each call to the model should receive the full message history so far
     and a non-empty system prompt."""
-    import provider
-
     received_messages: list = []
     system_prompts: list = []
     call_count = 0
 
-    async def capturing_call_model(messages, system_prompt):
-        nonlocal call_count
-        call_count += 1
-        received_messages.extend(messages)
-        system_prompts.append(system_prompt)
-        return "Response."
+    class CapturingLLM(ScriptedLLM):
+        def __call__(self, messages, system_prompt):
+            nonlocal call_count
+            call_count += 1
+            received_messages.extend(messages)
+            system_prompts.append(system_prompt)
+            return super().__call__(messages, system_prompt)
 
-    monkeypatch.setattr(provider, "call_model", capturing_call_model)
+    turns = [[_chunk(content="Response."), _chunk(finish_reason="stop")]]
+    monkeypatch.setattr(agent, "stream_response", CapturingLLM(turns))
 
-    from agent import run_agent
-
-    await run_agent("hello")
+    await agent.run_agent("hello")
 
     # The model should have been called exactly once for a no-tool task.
     assert call_count == 1

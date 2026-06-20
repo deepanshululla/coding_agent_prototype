@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import provider
+from provider import stream_response
 
 MAX_ITERATIONS = 30
 
@@ -8,9 +8,10 @@ MAX_ITERATIONS = 30
 async def run_agent(task: str) -> list[dict]:
     """Run the agent on task and return the final message history.
 
-    Phase 2: text-only, no tools. The loop calls the model, appends the
-    assistant reply, and stops when the model returns plain text (no tool
-    calls to make).
+    Phase 3: text-only, no tools, but the model response is now streamed.
+    The inner loop consumes OpenAI-format chunks from stream_response,
+    accumulates the text fragments into one assistant message, and tracks
+    finish_reason so the loop knows when the model is done talking.
     """
     messages: list[dict] = [{"role": "user", "content": task}]
 
@@ -24,14 +25,27 @@ async def run_agent(task: str) -> list[dict]:
         while has_more_tool_calls and iteration < MAX_ITERATIONS:
             iteration += 1
 
-            # Phase A: ask the model
-            reply_text = await provider.call_model(
+            # Phase A: stream the model response, accumulating as we go.
+            text_buf = ""
+            finish_reason = None
+
+            async for chunk in stream_response(
                 messages=messages,
                 system_prompt="You are a helpful coding assistant.",
-            )
+            ):
+                choice = chunk.choices[0]
+                delta = choice.delta
+                # Carry the last non-None finish_reason forward.
+                finish_reason = choice.finish_reason or finish_reason
 
-            # Phase B: append the assistant's reply to history
-            messages.append({"role": "assistant", "content": reply_text})
+                if getattr(delta, "content", None):
+                    text_buf += delta.content
+                    print(delta.content, end="", flush=True)  # live output
+
+            print()  # newline after the streamed turn
+
+            # Phase B: append the assistant's reply to history.
+            messages.append({"role": "assistant", "content": text_buf})
 
             # Phase C: stop check — no tools in this phase, so a text reply
             # always means we are done.
