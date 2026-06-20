@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-02-the-agent-loop
 
 # Phase 2 — The Conversation Loop
 
