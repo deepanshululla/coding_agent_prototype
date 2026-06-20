@@ -44,9 +44,7 @@ def test_unknown_skill_is_skipped():
 def test_none_skills_falls_back_to_active_default():
     # ACTIVE_SKILLS defaults to DEFAULT_SKILLS (tdd, git) when AGENT_SKILLS unset.
     result = prompts.build_system_prompt()
-    expected = "\n".join(
-        skills.SKILLS[s] for s in skills.ACTIVE_SKILLS if s in skills.SKILLS
-    )
+    expected = "\n".join(skills.SKILLS[s] for s in skills.ACTIVE_SKILLS if s in skills.SKILLS)
     if expected.strip():
         # At least the first active block should be present.
         assert skills.SKILLS[skills.ACTIVE_SKILLS[0]].strip().splitlines()[0] in result
@@ -101,3 +99,32 @@ def test_extract_skills_preserves_sandbox_flag_before():
     task, active = main._extract_skills(["--sandbox", "--skills", "security", "audit it"])
     assert active == ["security"]
     assert task == ["--sandbox", "audit it"]
+
+
+# --- CLI flag parsing (main._extract_model, Phase 13.6) ---
+
+
+def test_extract_model_absent_returns_none():
+    task, model = main._extract_model(["explain", "the", "loop"])
+    assert model is None
+    assert task == ["explain", "the", "loop"]
+
+
+def test_extract_model_pulls_value_and_strips_flag():
+    task, model = main._extract_model(["--model", "gpt-4o", "add type hints"])
+    assert model == "gpt-4o"
+    assert task == ["add type hints"]
+
+
+def test_extract_model_with_provider_prefix():
+    task, model = main._extract_model(
+        ["--model", "gemini/gemini-2.0-flash", "explain the agent loop"]
+    )
+    assert model == "gemini/gemini-2.0-flash"
+    assert task == ["explain the agent loop"]
+
+
+def test_extract_model_trailing_flag_no_value():
+    task, model = main._extract_model(["do it", "--model"])
+    assert model is None
+    assert task == ["do it"]

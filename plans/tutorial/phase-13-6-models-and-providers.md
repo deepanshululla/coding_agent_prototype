@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-13-6-models-and-providers
 
 # Phase 13.6 — Custom Models & Providers
 

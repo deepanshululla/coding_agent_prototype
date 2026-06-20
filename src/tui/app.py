@@ -34,14 +34,14 @@ class AgentApp(App):
     mode: reactive[str] = reactive("normal")  # "normal" | "insert" | "command"
 
     BINDINGS = [
-        Binding("j",      "scroll_down",   "Down",    show=False),
-        Binding("k",      "scroll_up",     "Up",      show=False),
-        Binding("g,g",    "scroll_top",    "Top",     show=False),
-        Binding("G",      "scroll_bottom", "Bottom",  show=False),
-        Binding("i",      "enter_insert",  "Insert",  show=True),
-        Binding("colon",  "enter_command", "Command", show=True),
-        Binding("escape", "enter_normal",  "Normal",  show=False),
-        Binding("ctrl+c", "cancel_turn",   "Cancel",  show=True),
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
+        Binding("g,g", "scroll_top", "Top", show=False),
+        Binding("G", "scroll_bottom", "Bottom", show=False),
+        Binding("i", "enter_insert", "Insert", show=True),
+        Binding("colon", "enter_command", "Command", show=True),
+        Binding("escape", "enter_normal", "Normal", show=False),
+        Binding("ctrl+c", "cancel_turn", "Cancel", show=True),
     ]
 
     CSS = """
@@ -71,7 +71,10 @@ class AgentApp(App):
         # Scroll motions only fire in NORMAL; INSERT owns the keyboard for typing
         # so j/k/g/G can be typed freely into the input box.
         if self.mode == "insert" and action in {
-            "scroll_down", "scroll_up", "scroll_top", "scroll_bottom"
+            "scroll_down",
+            "scroll_up",
+            "scroll_top",
+            "scroll_bottom",
         }:
             return False
         return True
@@ -97,9 +100,7 @@ class AgentApp(App):
         async def _drive() -> None:
             # Pass pending_messages and cancel_event into run_agent so the outer
             # loop can receive steering messages and the inner loop can cancel.
-            self.agent_history = await run_agent(
-                self._agent_task, self._pending, self.cancel_event
-            )
+            self.agent_history = await run_agent(self._agent_task, self._pending, self.cancel_event)
 
         asyncio.create_task(_drive())
 

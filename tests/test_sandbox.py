@@ -73,9 +73,7 @@ def test_run_in_worktree_isolates_writes(git_repo, monkeypatch):
 
     monkeypatch.setattr(agent, "run_agent", fake_run_agent)
 
-    worktree = asyncio.run(
-        run_in_worktree("add a comment to tools.py", base_dir=str(git_repo))
-    )
+    worktree = asyncio.run(run_in_worktree("add a comment to tools.py", base_dir=str(git_repo)))
 
     # run_in_worktree returns a Path pointing to a real worktree directory.
     assert isinstance(worktree, Path)
@@ -94,9 +92,7 @@ def test_run_in_worktree_isolates_writes(git_repo, monkeypatch):
     assert "agent comment" in diff
 
     # The branch exists on the new worktree.
-    branch = _git(
-        ["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree
-    ).strip()
+    branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree).strip()
     assert branch.startswith("agent/task-")
 
     subprocess.run(
@@ -125,9 +121,7 @@ def test_run_in_worktree_restores_cwd(git_repo, monkeypatch):
     )
 
 
-def test_auto_cleanup_keeps_worktree_when_base_has_commits(
-    git_repo, monkeypatch
-):
+def test_auto_cleanup_keeps_worktree_when_base_has_commits(git_repo, monkeypatch):
     """A worktree branched from a commit always has a non-empty HEAD log.
 
     The plan's auto_cleanup_on_failure check is `git log HEAD --oneline -1`:
@@ -142,9 +136,7 @@ def test_auto_cleanup_keeps_worktree_when_base_has_commits(
 
     monkeypatch.setattr(agent, "run_agent", fake_run_agent)
 
-    worktree = run_in_worktree_sync(
-        git_repo, auto_cleanup_on_failure=True
-    )
+    worktree = run_in_worktree_sync(git_repo, auto_cleanup_on_failure=True)
     assert worktree.is_dir()
 
     subprocess.run(
@@ -154,9 +146,7 @@ def test_auto_cleanup_keeps_worktree_when_base_has_commits(
     )
 
 
-def test_auto_cleanup_on_failure_removes_worktree_on_unborn_branch(
-    tmp_path, monkeypatch
-):
+def test_auto_cleanup_on_failure_removes_worktree_on_unborn_branch(tmp_path, monkeypatch):
     """With auto_cleanup_on_failure and an empty HEAD log, the worktree is removed.
 
     We force the empty-log condition by stubbing subprocess.run for the
@@ -189,11 +179,7 @@ def test_auto_cleanup_on_failure_removes_worktree_on_unborn_branch(
     monkeypatch.setattr(sandbox.subprocess, "run", fake_subprocess_run)
 
     with pytest.raises(RuntimeError, match="no commits"):
-        asyncio.run(
-            run_in_worktree(
-                "noop", base_dir=str(repo), auto_cleanup_on_failure=True
-            )
-        )
+        asyncio.run(run_in_worktree("noop", base_dir=str(repo), auto_cleanup_on_failure=True))
 
     # No leftover worktrees besides the main one.
     listing = real_run(
@@ -207,9 +193,7 @@ def test_auto_cleanup_on_failure_removes_worktree_on_unborn_branch(
 
 
 def run_in_worktree_sync(repo: Path, **kwargs) -> Path:
-    return asyncio.run(
-        run_in_worktree("noop", base_dir=str(repo), **kwargs)
-    )
+    return asyncio.run(run_in_worktree("noop", base_dir=str(repo), **kwargs))
 
 
 def test_worktree_sandbox_resolve_allows_inside(tmp_path):

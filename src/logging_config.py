@@ -36,7 +36,7 @@ def setup_logging() -> None:
         sys.stderr,
         level=level,
         format="<green>{time:HH:mm:ss}</green> | <level>{level: <7}</level> | "
-               "<cyan>{name}</cyan> - {message}",
+        "<cyan>{name}</cyan> - {message}",
         colorize=True,
     )
 
@@ -48,7 +48,7 @@ def setup_logging() -> None:
             level=level,
             rotation="10 MB",
             retention=5,
-            serialize=True,   # one JSON object per line
+            serialize=True,  # one JSON object per line
         )
 
     logger.debug("logging configured at level {}", level)

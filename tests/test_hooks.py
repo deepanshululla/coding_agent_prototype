@@ -130,6 +130,7 @@ async def test_log_after_tool_call_appends(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_confirm_before_tool_call_allows_readonly(monkeypatch):
     """Read-only tools pass the confirmation gate silently (no input prompt)."""
+
     def boom(*a, **k):  # input must NOT be called for read-only tools
         raise AssertionError("input() should not be called for read-only tools")
 
@@ -161,8 +162,7 @@ async def test_hooks_thread_through_run_agent(monkeypatch, tmp_path):
         return True
 
     turn1 = [
-        _chunk(tool_calls=[_tc(0, id="c0", name="read_file",
-                               arguments=f'{{"path": "{f}"}}')]),
+        _chunk(tool_calls=[_tc(0, id="c0", name="read_file", arguments=f'{{"path": "{f}"}}')]),
         _chunk(finish_reason="tool_calls"),
     ]
     turn2 = [_chunk(content="done"), _chunk(finish_reason="stop")]
@@ -182,9 +182,7 @@ async def test_hooks_thread_through_run_agent(monkeypatch, tmp_path):
 
     monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2]))
 
-    messages = await agent.run_agent(
-        "read a.txt", before_tool_call=before
-    )
+    messages = await agent.run_agent("read a.txt", before_tool_call=before)
 
     assert "read_file" in recorded
     tool_msgs = [m for m in messages if m["role"] == "tool"]

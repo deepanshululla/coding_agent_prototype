@@ -62,7 +62,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 
@@ -122,11 +122,7 @@ def test_allowlist_gate_refuses_destructive_command(monkeypatch):
     ]
     monkeypatch.setattr(agent, "stream_response", ScriptedLLM(turns))
 
-    messages = asyncio.run(
-        agent.run_agent(
-            "delete all .pyc files by running: rm -rf __pycache__"
-        )
-    )
+    messages = asyncio.run(agent.run_agent("delete all .pyc files by running: rm -rf __pycache__"))
 
     # Then: the bash function was never called — the gate refused before dispatch.
     assert executed == []

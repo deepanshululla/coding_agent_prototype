@@ -242,8 +242,16 @@ TOOLS_SCHEMA: list[dict] = [
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "File path to read"},
-                    "offset": {"type": "integer", "description": "Line to start from (0-indexed)", "default": 0},
-                    "limit": {"type": "integer", "description": "Max lines to return", "default": 2000},
+                    "offset": {
+                        "type": "integer",
+                        "description": "Line to start from (0-indexed)",
+                        "default": 0,
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max lines to return",
+                        "default": 2000,
+                    },
                 },
                 "required": ["path"],
             },
@@ -273,7 +281,10 @@ TOOLS_SCHEMA: list[dict] = [
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "File path to edit"},
-                    "old_string": {"type": "string", "description": "Exact text to replace (must be unique)"},
+                    "old_string": {
+                        "type": "string",
+                        "description": "Exact text to replace (must be unique)",
+                    },
                     "new_string": {"type": "string", "description": "Replacement text"},
                 },
                 "required": ["path", "old_string", "new_string"],
@@ -284,7 +295,9 @@ TOOLS_SCHEMA: list[dict] = [
         "type": "function",
         "function": {
             "name": "bash",
-            "description": "Execute a shell command (ls, git, grep, pytest, etc.) and return its output.",
+            "description": (
+                "Execute a shell command (ls, git, grep, pytest, etc.) and return its output."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -298,12 +311,18 @@ TOOLS_SCHEMA: list[dict] = [
         "type": "function",
         "function": {
             "name": "grep",
-            "description": "Recursively search for a text pattern, returning matches with line numbers.",
+            "description": (
+                "Recursively search for a text pattern, returning matches with line numbers."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "pattern": {"type": "string", "description": "Pattern to search for"},
-                    "path": {"type": "string", "description": "Directory or file to search", "default": "."},
+                    "path": {
+                        "type": "string",
+                        "description": "Directory or file to search",
+                        "default": ".",
+                    },
                 },
                 "required": ["pattern"],
             },
@@ -318,7 +337,11 @@ TOOLS_SCHEMA: list[dict] = [
                 "type": "object",
                 "properties": {
                     "pattern": {"type": "string", "description": "Name pattern, e.g. '*.py'"},
-                    "path": {"type": "string", "description": "Directory to search under", "default": "."},
+                    "path": {
+                        "type": "string",
+                        "description": "Directory to search under",
+                        "default": ".",
+                    },
                 },
                 "required": ["pattern"],
             },
@@ -344,12 +367,16 @@ TOOLS_SCHEMA: list[dict] = [
             "name": "load_skill",
             "description": (
                 "Load the full instruction body of an installed skill. "
-                "Call this when you recognize a skill in the skills menu applies to the current task."
+                "Call this when you recognize a skill in the skills menu "
+                "applies to the current task."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Skill name as listed in the skills menu"},
+                    "name": {
+                        "type": "string",
+                        "description": "Skill name as listed in the skills menu",
+                    },
                 },
                 "required": ["name"],
             },

@@ -1,0 +1,17 @@
+# Pre-commit hooks for linting, formatting, and type checking.
+# Install once with:  uv run pre-commit install
+# Run on demand with: uv run pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      # Lint and auto-fix.
+      - id: ruff-check
+        args: [--fix]
+      # Format.
+      - id: ruff-format
+
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: 0.0.51
+    hooks:
+      - id: ty

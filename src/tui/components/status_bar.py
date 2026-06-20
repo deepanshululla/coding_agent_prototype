@@ -30,9 +30,7 @@ class StatusBar(Static):
     }
     """
 
-    def __init__(
-        self, max_iterations: int = 30, theme: dict[str, str] | None = None
-    ) -> None:
+    def __init__(self, max_iterations: int = 30, theme: dict[str, str] | None = None) -> None:
         super().__init__()
         self._model = os.getenv("AGENT_MODEL", "claude-sonnet-4-5")
         self._max = max_iterations

@@ -60,6 +60,25 @@ def _extract_skills(args: list[str]) -> tuple[list[str], list[str] | None]:
     return remaining, skills
 
 
+def _extract_model(args: list[str]) -> tuple[list[str], str | None]:
+    """Pull a ``--model`` flag out of ``args`` (Phase 13.6).
+
+    ``--model <name>`` selects the provider/model for this run, overriding the
+    ``AGENT_MODEL`` env var. The single token that follows the flag is the model
+    string (e.g. ``gpt-4o``, ``gemini/gemini-2.0-flash``); it is removed from the
+    arg list so it is not mistaken for part of the task. Returns the remaining
+    args and the model (``None`` when the flag is absent, falling back to the
+    configured ``MODEL``).
+    """
+    if "--model" not in args:
+        return args, None
+
+    idx = args.index("--model")
+    model = args[idx + 1] if idx + 1 < len(args) else None
+    remaining = args[:idx] + args[idx + 2 :]
+    return remaining, model
+
+
 def main() -> None:
     load_dotenv()
 
@@ -76,6 +95,10 @@ def main() -> None:
     # argv, and overrides the AGENT_SKILLS env var. `active_skills is None` means
     # "fall back to ACTIVE_SKILLS"; an empty list means "no skills" (bare prompt).
     args, active_skills = _extract_skills(args)
+
+    # --model (Layer 13.6): pick the provider/model for this run, overriding the
+    # AGENT_MODEL env var. `model is None` falls back to the configured MODEL.
+    args, model = _extract_model(args)
 
     # --sandbox: run inside a throwaway git worktree (Layer 12.4). The flag must
     # be the first argument; everything after it is the task.
@@ -102,7 +125,6 @@ def main() -> None:
     # Fold project instructions (AGENTS.md / CLAUDE.md, Layer 13.1) into the
     # system prompt so the agent starts each session briefed on repo conventions.
     from project_instructions import load_project_instructions
-    from prompts import build_system_prompt
 
     cwd = os.getcwd()
 
@@ -110,23 +132,29 @@ def main() -> None:
     # context for just this run, composed alongside the always-on project
     # instructions. Both land at the bottom of the system prompt via extra=.
     session_override = os.environ.get("AGENT_SESSION_CONTEXT", "")
-    extra = "\n\n".join(
-        filter(None, [load_project_instructions(cwd), session_override])
-    )
+    extra = "\n\n".join(filter(None, [load_project_instructions(cwd), session_override]))
 
     if os.getenv("AGENT_UI", "stdout") == "tui":
         # The TUI path keeps its own prompt build; MCP wiring lives on the
         # stdout path (Layer 13.5) where session lifecycle is easy to manage.
-        system_prompt = build_system_prompt(cwd=cwd, extra=extra, skills=active_skills)
         from tui import run
 
         run(task)
     else:
-        asyncio.run(_run_stdout(task, cwd=cwd, extra=extra, skills=active_skills))
+        asyncio.run(
+            _run_stdout(
+                task, cwd=cwd, extra=extra, skills=active_skills, model=model
+            )
+        )
 
 
 async def _run_stdout(
-    task: str, *, cwd: str, extra: str, skills: list[str] | None
+    task: str,
+    *,
+    cwd: str,
+    extra: str,
+    skills: list[str] | None,
+    model: str | None = None,
 ) -> None:
     """Run the agent on the stdout path with MCP servers wired in.
 
@@ -146,6 +174,7 @@ async def _run_stdout(
             task,
             system_prompt=system_prompt,
             after_tool_call=log_after_tool_call,
+            model=model,
         )
     finally:
         for session in sessions:

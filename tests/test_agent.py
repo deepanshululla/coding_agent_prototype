@@ -19,7 +19,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 
@@ -142,11 +142,7 @@ def test_streaming_tool_call_split_arguments(monkeypatch, tmp_path):
 
     turn1 = [
         # First fragment: carries id, name, and the first half of arguments.
-        _chunk(
-            tool_calls=[
-                _tc(0, id="call_split", name="read_file", arguments=args_part1)
-            ]
-        ),
+        _chunk(tool_calls=[_tc(0, id="call_split", name="read_file", arguments=args_part1)]),
         # Second fragment: no id, no name, just the rest of arguments.
         _chunk(tool_calls=[_tc(0, arguments=args_part2)]),
         _chunk(finish_reason="tool_calls"),
@@ -200,7 +196,7 @@ async def test_run_agent_stops_after_text_reply(monkeypatch):
     call_count = 0
 
     class CountingLLM(ScriptedLLM):
-        def __call__(self, messages, system_prompt):
+        def __call__(self, messages, system_prompt, model=None):
             nonlocal call_count
             call_count += 1
             return super().__call__(messages, system_prompt)
@@ -222,7 +218,7 @@ async def test_run_agent_passes_full_history_to_model(monkeypatch):
     call_count = 0
 
     class CapturingLLM(ScriptedLLM):
-        def __call__(self, messages, system_prompt):
+        def __call__(self, messages, system_prompt, model=None):
             nonlocal call_count
             call_count += 1
             received_messages.extend(messages)

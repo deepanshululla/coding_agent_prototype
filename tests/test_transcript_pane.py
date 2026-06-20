@@ -16,8 +16,8 @@ ScriptedLLM so the run is deterministic and needs no API key.
 import asyncio
 
 import agent
-from provider import _chunk
 import tui.emit
+from provider import _chunk
 from tui.app import AgentApp
 from tui.components.transcript import TranscriptPane
 from tui.emit import set_app
@@ -30,7 +30,7 @@ class ScriptedLLM:
         self._turns = list(turns)
         self._index = 0
 
-    def __call__(self, messages, system_prompt):
+    def __call__(self, messages, system_prompt, model=None):
         turn = self._turns[self._index]
         self._index += 1
 

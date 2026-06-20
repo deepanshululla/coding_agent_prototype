@@ -12,8 +12,8 @@ from renderer import emit
 from tools import TOOL_REGISTRY
 from types_ import ToolResult
 
-_policy = PolicyEngine.from_env()   # reads AGENT_PERMISSION_MODE once at startup
-_prompt_lock = asyncio.Lock()       # serialise stdin prompts in ask mode
+_policy = PolicyEngine.from_env()  # reads AGENT_PERMISSION_MODE once at startup
+_prompt_lock = asyncio.Lock()  # serialise stdin prompts in ask mode
 
 
 async def _prompt_user(name: str, args: dict) -> bool:
@@ -39,6 +39,7 @@ async def run_agent(
     system_prompt: str | None = None,
     before_tool_call=None,
     after_tool_call=None,
+    model: str | None = None,
 ) -> list[dict]:
     """Run the agent on task and return the final message history.
 
@@ -63,6 +64,10 @@ async def run_agent(
     tool never runs). after_tool_call(name, args, result) runs after a
     successful dispatch and its return value replaces the result string. Both
     default to None, leaving the loop unchanged for existing callers.
+
+    model, when provided (Phase 13.6), overrides the configured MODEL for this
+    run — it is threaded straight to stream_response so the agent loop itself is
+    provider-agnostic. When None (the default) the configured MODEL is used.
 
     cancel_event, when provided (Phase 10.5), is an asyncio.Event the TUI sets
     on Ctrl-C. It is checked at the top of each inner-loop pass; if set, it is
@@ -102,6 +107,7 @@ async def run_agent(
             async for chunk in stream_response(
                 messages=messages,
                 system_prompt=system_prompt,
+                model=model,
             ):
                 choice = chunk.choices[0]
                 delta = choice.delta
@@ -114,22 +120,31 @@ async def run_agent(
 
                 for tc_chunk in getattr(delta, "tool_calls", None) or []:
                     idx = tc_chunk.index
-                    slot = tool_acc.setdefault(
-                        idx, {"id": "", "name": "", "arguments_buf": ""}
-                    )
+                    slot = tool_acc.setdefault(idx, {"id": "", "name": "", "arguments_buf": ""})
                     if tc_chunk.id:
                         slot["id"] = tc_chunk.id
                     fn = getattr(tc_chunk, "function", None)
                     if fn and fn.name:
                         slot["name"] = fn.name
-                        emit({"type": "tool_call_start", "index": idx,
-                              "tool_call_id": slot["id"], "name": fn.name})
+                        emit(
+                            {
+                                "type": "tool_call_start",
+                                "index": idx,
+                                "tool_call_id": slot["id"],
+                                "name": fn.name,
+                            }
+                        )
                     if fn and fn.arguments:
                         slot["arguments_buf"] += fn.arguments
 
-            emit({"type": "turn_end", "iteration": iteration,
-                  "finish_reason": finish_reason or "stop",
-                  "tool_calls_count": len(tool_acc)})
+            emit(
+                {
+                    "type": "turn_end",
+                    "iteration": iteration,
+                    "finish_reason": finish_reason or "stop",
+                    "tool_calls_count": len(tool_acc),
+                }
+            )
 
             # Finalize tool calls (arguments stay a JSON string in history).
             tool_calls = [
@@ -215,7 +230,7 @@ async def _execute_tools_parallel(
 async def _execute_one_tool(
     tool_call: dict,
     before_tool_call=None,  # async (name, args) -> bool | None
-    after_tool_call=None,   # async (name, args, result) -> str
+    after_tool_call=None,  # async (name, args, result) -> str
 ) -> ToolResult:
     """Look up one tool by name, call it, and wrap the outcome in a ToolResult.
 
@@ -233,9 +248,17 @@ async def _execute_one_tool(
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
         logger.warning("unknown tool requested: {}", name)
-        emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-              "tool_call_id": tool_call["id"], "name": name,
-              "content": f"Unknown tool: {name}", "is_error": True, "chars": 0})
+        emit(
+            {
+                "type": "tool_call_end",
+                "index": tool_call.get("index", 0),
+                "tool_call_id": tool_call["id"],
+                "name": name,
+                "content": f"Unknown tool: {name}",
+                "is_error": True,
+                "chars": 0,
+            }
+        )
         return ToolResult(tool_call["id"], name, f"Unknown tool: {name}", is_error=True)
 
     # ── beforeToolCall hook (Phase 13.2) ──────────────────────────────────
@@ -246,9 +269,17 @@ async def _execute_one_tool(
         approved = await before_tool_call(name, args)
         if approved is False:
             reason = f"Tool call denied: {name}"
-            emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-                  "tool_call_id": tool_call["id"], "name": name,
-                  "content": reason, "is_error": True, "chars": 0})
+            emit(
+                {
+                    "type": "tool_call_end",
+                    "index": tool_call.get("index", 0),
+                    "tool_call_id": tool_call["id"],
+                    "name": name,
+                    "content": reason,
+                    "is_error": True,
+                    "chars": 0,
+                }
+            )
             return ToolResult(tool_call["id"], name, reason, is_error=True)
 
     # ── Policy gate ───────────────────────────────────────────────────────
@@ -261,18 +292,34 @@ async def _execute_one_tool(
 
     if decision.outcome == "deny":
         reason = f"Error: tool call denied — {decision.reason}"
-        emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-              "tool_call_id": tool_call["id"], "name": name,
-              "content": reason, "is_error": True, "chars": 0})
+        emit(
+            {
+                "type": "tool_call_end",
+                "index": tool_call.get("index", 0),
+                "tool_call_id": tool_call["id"],
+                "name": name,
+                "content": reason,
+                "is_error": True,
+                "chars": 0,
+            }
+        )
         return ToolResult(tool_call["id"], name, reason, is_error=True)
 
     if decision.outcome == "ask":
         approved = await _prompt_user(name, args)
         if not approved:
             reason = f"Tool call '{name}' was not approved."
-            emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-                  "tool_call_id": tool_call["id"], "name": name,
-                  "content": reason, "is_error": True, "chars": 0})
+            emit(
+                {
+                    "type": "tool_call_end",
+                    "index": tool_call.get("index", 0),
+                    "tool_call_id": tool_call["id"],
+                    "name": name,
+                    "content": reason,
+                    "is_error": True,
+                    "chars": 0,
+                }
+            )
             return ToolResult(tool_call["id"], name, reason, is_error=True)
     # outcome == "allow" — fall through to dispatch
     # ─────────────────────────────────────────────────────────────────────
@@ -282,9 +329,17 @@ async def _execute_one_tool(
         result = await fn(**args)
     except Exception as e:
         logger.exception("tool {} raised", name)
-        emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-              "tool_call_id": tool_call["id"], "name": name,
-              "content": f"Error: {e}", "is_error": True, "chars": 0})
+        emit(
+            {
+                "type": "tool_call_end",
+                "index": tool_call.get("index", 0),
+                "tool_call_id": tool_call["id"],
+                "name": name,
+                "content": f"Error: {e}",
+                "is_error": True,
+                "chars": 0,
+            }
+        )
         return ToolResult(tool_call["id"], name, f"Error: {e}", is_error=True)
     # ── afterToolCall hook (Phase 13.2) ───────────────────────────────────
     # Runs after a successful dispatch. Its return value replaces the result
@@ -294,7 +349,15 @@ async def _execute_one_tool(
         result = await after_tool_call(name, args, result)
 
     logger.debug("tool {} ok: {} chars", name, len(result))
-    emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
-          "tool_call_id": tool_call["id"], "name": name,
-          "content": result, "is_error": False, "chars": len(result)})
+    emit(
+        {
+            "type": "tool_call_end",
+            "index": tool_call.get("index", 0),
+            "tool_call_id": tool_call["id"],
+            "name": name,
+            "content": result,
+            "is_error": False,
+            "chars": len(result),
+        }
+    )
     return ToolResult(tool_call["id"], name, result)
