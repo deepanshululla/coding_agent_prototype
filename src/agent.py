@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 
+from config import MAX_ITERATIONS
+from logging_config import logger
 from policy import PolicyEngine
 from prompts import build_system_prompt
 from provider import stream_response
 from renderer import emit
 from tools import TOOL_REGISTRY
 from types_ import ToolResult
-
-MAX_ITERATIONS = 30
 
 _policy = PolicyEngine.from_env()   # reads AGENT_PERMISSION_MODE once at startup
 _prompt_lock = asyncio.Lock()       # serialise stdin prompts in ask mode
@@ -56,6 +56,7 @@ async def run_agent(
     complete before the cancel takes effect). When None (the default) the check
     is skipped, preserving backward compatibility.
     """
+    logger.info("agent starting: {!r}", task)
     system_prompt = build_system_prompt()
     messages: list[dict] = [{"role": "user", "content": task}]
     if pending_messages is None:
@@ -75,6 +76,7 @@ async def run_agent(
                 break  # exit inner loop; outer loop waits for input
 
             iteration += 1
+            logger.debug("iteration {}/{}", iteration, MAX_ITERATIONS)
 
             # ── Phase A: stream the model response, accumulating as we go. ──
             text_buf = ""
@@ -163,6 +165,7 @@ async def run_agent(
 
         break  # outer loop: no follow-up support yet
 
+    logger.info("agent finished after {} iteration(s)", iteration)
     emit({"type": "agent_end", "total_iterations": iteration, "status": "ok"})
     return messages
 
@@ -184,8 +187,11 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
     # ── Unknown-tool check (before the policy gate) ───────────────────────
     # An unknown tool can never be dispatched, so there is nothing to gate or
     # prompt for — short-circuit to the error so the model can correct itself.
+    logger.debug("executing tool {} with {}", name, args)
+
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
+        logger.warning("unknown tool requested: {}", name)
         emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
               "tool_call_id": tool_call["id"], "name": name,
               "content": f"Unknown tool: {name}", "is_error": True, "chars": 0})
@@ -221,10 +227,12 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
     try:
         result = await fn(**args)
     except Exception as e:
+        logger.exception("tool {} raised", name)
         emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
               "tool_call_id": tool_call["id"], "name": name,
               "content": f"Error: {e}", "is_error": True, "chars": 0})
         return ToolResult(tool_call["id"], name, f"Error: {e}", is_error=True)
+    logger.debug("tool {} ok: {} chars", name, len(result))
     emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
           "tool_call_id": tool_call["id"], "name": name,
           "content": result, "is_error": False, "chars": len(result)})

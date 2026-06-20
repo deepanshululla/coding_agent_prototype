@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-12-5-logging-and-settings
 
 # Phase 12.5 — Logging & Settings
 

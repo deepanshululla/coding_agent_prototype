@@ -1,0 +1,50 @@
+"""Centralised reader for AGENT_* environment variables.
+
+Every module that needs a tunable imports it from here:
+    from config import MAX_ITERATIONS, BASH_TIMEOUT
+
+Defaults match the shipped constants so behaviour is identical when
+nothing is set. load_dotenv() in main.py must run before config is
+imported so .env is in os.environ when these module-level reads happen.
+"""
+
+import os
+
+
+def _int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise SystemExit(f"{name} must be an integer, got {raw!r}")
+
+
+def _csv(name: str, default: list[str]) -> list[str]:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+# ── Model / provider ─────────────────────────────────────────────────────────
+MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")
+MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
+
+# ── Loop ─────────────────────────────────────────────────────────────────────
+MAX_ITERATIONS = _int("AGENT_MAX_ITERATIONS", 30)
+SYSTEM_PROMPT_EXTRA = os.environ.get("AGENT_SYSTEM_PROMPT_EXTRA", "")
+
+# ── Tools ────────────────────────────────────────────────────────────────────
+BASH_TIMEOUT = _int("AGENT_BASH_TIMEOUT", 30)
+BASH_OUTPUT_LIMIT = _int("AGENT_BASH_OUTPUT_LIMIT", 10_000)
+FIND_LIMIT = _int("AGENT_FIND_LIMIT", 200)
+READ_LIMIT = _int("AGENT_READ_LIMIT", 2000)
+
+# ── Features ─────────────────────────────────────────────────────────────────
+BASH_ALLOWLIST = _csv("AGENT_BASH_ALLOWLIST", [])
+PERMISSION_MODE = os.environ.get("AGENT_PERMISSION_MODE", "auto")
+UI = os.environ.get("AGENT_UI", "stdout")
+THEME = os.environ.get("AGENT_THEME", "dark")
+MCP_CONFIG = os.environ.get("AGENT_MCP_CONFIG")

@@ -6,6 +6,10 @@ description: Route diagnostics to stderr with loguru and centralise every AGENT_
 
 # Layer 12.5 — Logging & Settings
 
+:::note Implemented
+This step is implemented on branch `step/phase-12-5-logging-and-settings` (plan: `plans/tutorial/phase-12-5-logging-and-settings.md`).
+:::
+
 :::note Starting point
 The hardened agent from Layer 12.4: a command allowlist, a policy engine with permission modes, and optional worktree sandboxing. The agent is safe to run, but when something goes wrong — a tool call is denied, an unexpected command appears, the loop hits `MAX_ITERATIONS` — the only signal is whatever the model printed to stdout. Diagnostics and configuration are scattered across module-level constants.
 :::
