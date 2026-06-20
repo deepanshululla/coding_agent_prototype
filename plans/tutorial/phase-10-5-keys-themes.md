@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-10-5-keys-themes
 
 # Phase 10.5 — Keybindings & Themes
 

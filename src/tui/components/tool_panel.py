@@ -38,9 +38,10 @@ class ToolPanel(DataTable):
     }
     """
 
-    def __init__(self) -> None:
+    def __init__(self, theme: dict[str, str] | None = None) -> None:
         super().__init__(show_header=False, show_cursor=False)
         self._rows: dict[int, _ToolRow] = {}
+        self._theme = theme or {}
 
     def on_mount(self) -> None:
         self.add_column("icon", width=2, key="icon")
@@ -68,7 +69,8 @@ class ToolPanel(DataTable):
         row.status = "ok" if ok else "error"
         row.detail = f"{chars:,}c" if ok else "err"
 
-        style = "bright_green" if ok else "bright_red"
+        role = "tool_ok" if ok else "tool_error"
+        style = self._theme.get(role, "bright_green" if ok else "bright_red")
         icon = Text("✓" if ok else "✗", style=style)
         detail = Text(row.detail, style=style)
 

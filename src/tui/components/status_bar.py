@@ -30,7 +30,9 @@ class StatusBar(Static):
     }
     """
 
-    def __init__(self, max_iterations: int = 30) -> None:
+    def __init__(
+        self, max_iterations: int = 30, theme: dict[str, str] | None = None
+    ) -> None:
         super().__init__()
         self._model = os.getenv("AGENT_MODEL", "claude-sonnet-4-5")
         self._max = max_iterations
@@ -38,6 +40,7 @@ class StatusBar(Static):
         self._start = time.monotonic()
         self._done = False
         self._cancelled = False
+        self._color = (theme or {}).get("status", "grey70")
 
     def set_iteration(self, n: int) -> None:
         self._iter = n
@@ -56,6 +59,8 @@ class StatusBar(Static):
         # NB: named _refresh_label, NOT _render — Textual's Widget._render() is a
         # reserved internal that must return a Visual; overriding it with a
         # None-returning method crashes the compositor.
+        from rich.text import Text
+
         elapsed = int(time.monotonic() - self._start)
         if self._cancelled:
             state = "cancelled"
@@ -63,4 +68,5 @@ class StatusBar(Static):
             state = f"done ({self._iter} iters)"
         else:
             state = f"iter {self._iter}/{self._max}"
-        self.update(f" {self._model}  •  {state}  •  {elapsed}s")
+        line = f" {self._model}  •  {state}  •  {elapsed}s"
+        self.update(Text(line, style=self._color))
