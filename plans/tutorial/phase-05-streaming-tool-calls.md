@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-05-streaming-tool-calls
 
 # Phase 5 — Streaming Tool Calls
 

@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -126,6 +127,50 @@ def test_tool_call_then_stop(monkeypatch, tmp_path):
 
     # Final turn: model's summary.
     assert messages[-1]["content"] == "The file says: hello from the file."
+
+
+def test_streaming_tool_call_split_arguments(monkeypatch, tmp_path):
+    """Arguments fragmented across chunks are joined before json.loads."""
+    target = tmp_path / "data.txt"
+    target.write_text("streaming works")
+
+    path_str = str(target)
+    # Split the JSON arguments string across two chunks.
+    half = len(path_str) // 2
+    args_part1 = f'{{"path": "{path_str[:half]}'
+    args_part2 = f'{path_str[half:]}"}}'
+
+    turn1 = [
+        # First fragment: carries id, name, and the first half of arguments.
+        _chunk(
+            tool_calls=[
+                _tc(0, id="call_split", name="read_file", arguments=args_part1)
+            ]
+        ),
+        # Second fragment: no id, no name, just the rest of arguments.
+        _chunk(tool_calls=[_tc(0, arguments=args_part2)]),
+        _chunk(finish_reason="tool_calls"),
+    ]
+    turn2 = [
+        _chunk(content="File content received."),
+        _chunk(finish_reason="stop"),
+    ]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2]))
+
+    messages = asyncio.run(agent.run_agent("read the data file"))
+
+    # The tool_calls entry in the assistant message has the full joined arguments.
+    assistant1 = messages[1]
+    args_str = assistant1["tool_calls"][0]["function"]["arguments"]
+    assert isinstance(args_str, str)
+    parsed = json.loads(args_str)
+    assert parsed["path"] == path_str
+
+    # The tool ran and produced a role:tool message with the file content.
+    tool_msg = messages[2]
+    assert tool_msg["role"] == "tool"
+    assert tool_msg["tool_call_id"] == "call_split"
+    assert "streaming works" in tool_msg["content"]
 
 
 @pytest.mark.asyncio
