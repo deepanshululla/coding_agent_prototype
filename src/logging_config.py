@@ -30,26 +30,39 @@ def setup_logging() -> None:
     logger.remove()
 
     level = os.environ.get("AGENT_LOG_LEVEL", "INFO").upper()
-
-    # stderr sink — human-readable, coloured.
-    logger.add(
-        sys.stderr,
-        level=level,
-        format="<green>{time:HH:mm:ss}</green> | <level>{level: <7}</level> | "
-        "<cyan>{name}</cyan> - {message}",
-        colorize=True,
-    )
-
-    # Optional file sink — rotating JSON for log aggregators.
     log_file = os.environ.get("AGENT_LOG_FILE")
-    if log_file:
+
+    # In TUI mode (AGENT_UI=tui) Textual owns the terminal. loguru writes to
+    # stderr — that same terminal — so every diagnostic line would be painted
+    # into the middle of the rendered frame and corrupt the display. Route
+    # diagnostics to a file instead (AGENT_LOG_FILE, or a default under /tmp),
+    # never to stderr.
+    if os.environ.get("AGENT_UI", "stdout") == "tui":
         logger.add(
-            log_file,
+            log_file or "/tmp/agent-tui.log",
             level=level,
             rotation="10 MB",
             retention=5,
-            serialize=True,  # one JSON object per line
         )
+    else:
+        # stderr sink — human-readable, coloured.
+        logger.add(
+            sys.stderr,
+            level=level,
+            format="<green>{time:HH:mm:ss}</green> | <level>{level: <7}</level> | "
+            "<cyan>{name}</cyan> - {message}",
+            colorize=True,
+        )
+
+        # Optional file sink — rotating JSON for log aggregators.
+        if log_file:
+            logger.add(
+                log_file,
+                level=level,
+                rotation="10 MB",
+                retention=5,
+                serialize=True,  # one JSON object per line
+            )
 
     logger.debug("logging configured at level {}", level)
     _configured = True

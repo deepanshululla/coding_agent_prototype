@@ -109,3 +109,58 @@ def test_stale_state_ignored():
 
     # Clean up
     state_file.unlink(missing_ok=True)
+
+
+def test_trigger_reload_exits_without_execv_mid_run(monkeypatch):
+    """trigger_reload must NOT os.execv while Textual owns the terminal — that
+    skips teardown and corrupts the terminal. It sets a flag and exits instead."""
+    import asyncio
+
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    import tui.hot_reload as hr
+    from tui.app import AgentApp
+
+    execv_calls = []
+    monkeypatch.setattr(hr.os, "execv", lambda *a: execv_calls.append(a))
+    monkeypatch.setattr(hr, "save_tui_state", lambda app: None)  # no /tmp writes
+
+    async def _run():
+        app = AgentApp("task", hot_reload=True)
+        async with app.run_test():
+            app.trigger_reload()
+        return app
+
+    app = asyncio.run(_run())
+    assert app._reload_requested is True
+    assert execv_calls == []  # never execed while the app held the terminal
+
+
+def test_run_reexecs_after_app_exits_when_reload_requested(monkeypatch):
+    """run() performs the re-exec AFTER app.run() returns (terminal restored),
+    and only when a reload was requested."""
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    import tui
+    import tui.hot_reload as hr
+
+    order = []
+
+    class FakeApp:
+        def __init__(self, *args, reload_requested, **kwargs):
+            self._reload_requested = reload_requested
+
+        def run(self):
+            order.append("run")
+
+    monkeypatch.setattr(tui, "set_app", lambda app: None)
+    monkeypatch.setattr(hr, "do_reload", lambda: order.append("reload"))
+
+    # Reload requested → exec happens, and strictly after run().
+    monkeypatch.setattr(tui, "AgentApp", lambda *a, **k: FakeApp(reload_requested=True))
+    tui.run("task", hot_reload=True)
+    assert order == ["run", "reload"]
+
+    # No reload requested → no exec.
+    order.clear()
+    monkeypatch.setattr(tui, "AgentApp", lambda *a, **k: FakeApp(reload_requested=False))
+    tui.run("task")
+    assert order == ["run"]

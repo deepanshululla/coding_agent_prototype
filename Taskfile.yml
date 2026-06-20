@@ -26,10 +26,19 @@ tasks:
       - uv run main.py {{.CLI_ARGS}}
 
   tui:
-    desc: Launch the agent in the full-screen Textual UI. Pass a task after `--`, e.g. `task tui -- "summarize src/tools.py"`; with no task it prompts interactively. Use `--dir <path>` to run against another folder.
+    desc: Launch the agent in the full-screen Textual UI. Pass a task after `--`, e.g. `task tui -- "summarize src/tools.py"`; with no task it prompts interactively. For hot reload use `task tui:hot` (NOT `task tui --hot-reload` — go-task rejects the bare flag).
     interactive: true
     env:
       AGENT_UI: tui
+    cmds:
+      - uv run main.py {{.CLI_ARGS}}
+
+  tui:hot:
+    desc: Launch the TUI with hot reload — auto-restarts on changes under src/tui. Enabled via AGENT_HOT_RELOAD so no `--` is needed.
+    interactive: true
+    env:
+      AGENT_UI: tui
+      AGENT_HOT_RELOAD: "1"
     cmds:
       - uv run main.py {{.CLI_ARGS}}
 

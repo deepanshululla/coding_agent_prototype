@@ -43,6 +43,37 @@ def _reset_logging():
     logger.remove()
 
 
+def test_tui_mode_logs_to_file_not_terminal(monkeypatch, tmp_path, capsys):
+    """In AGENT_UI=tui mode loguru must NOT write to stderr (Textual owns the
+    terminal — stderr writes corrupt the rendered frame). Logs go to a file."""
+    monkeypatch.setenv("AGENT_UI", "tui")
+    log_file = tmp_path / "tui.log"
+    monkeypatch.setenv("AGENT_LOG_FILE", str(log_file))
+    monkeypatch.setenv("AGENT_LOG_LEVEL", "INFO")
+
+    logging_config.setup_logging()
+    logger.info("frame-corrupting-line")
+    logger.complete()  # flush loguru's sinks
+
+    err = capsys.readouterr().err
+    assert "frame-corrupting-line" not in err  # never on the terminal
+    assert "frame-corrupting-line" in log_file.read_text()  # captured in the file
+
+
+def test_stdout_mode_still_logs_to_stderr(monkeypatch):
+    """Non-TUI modes keep the stderr diagnostics sink."""
+    monkeypatch.setenv("AGENT_UI", "stdout")
+    monkeypatch.delenv("AGENT_LOG_FILE", raising=False)
+    monkeypatch.setenv("AGENT_LOG_LEVEL", "INFO")
+
+    sink = io.StringIO()
+    logging_config.setup_logging()
+    logger.add(sink, level="INFO")  # mirror to prove logging is active
+    logger.info("diag-line")
+    logger.complete()
+    assert "diag-line" in sink.getvalue()
+
+
 def test_setup_logging_is_idempotent(monkeypatch):
     """Calling setup_logging() twice adds the sink only once."""
     monkeypatch.delenv("AGENT_LOG_FILE", raising=False)

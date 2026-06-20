@@ -118,6 +118,9 @@ class AgentApp(App):
         self.theme_dict = get_theme(os.getenv("AGENT_THEME", "dark"))
         # Hot reload mode: when enabled, file watcher restarts the app on changes.
         self._hot_reload = hot_reload
+        # Set by trigger_reload so run() can re-exec the process AFTER Textual has
+        # torn down and restored the terminal (execing mid-run corrupts it).
+        self._reload_requested = False
         # Image content blocks pasted via Ctrl+V, awaiting the next submit. Each
         # is an OpenAI-style {"type": "image_url", ...} block folded into the
         # user message on Enter; cleared once that message is sent.
@@ -336,20 +339,21 @@ class AgentApp(App):
         self.query_one(StatusBar).set_hint(f"image {n} attached — add a message and press Enter")
 
     def trigger_reload(self) -> None:
-        """Trigger a hot reload: save state, log to transcript, then restart the process."""
-        from datetime import datetime
+        """Request a hot reload: save state, then exit the app cleanly.
 
-        from tui.hot_reload import do_reload, save_tui_state
+        Crucially this does NOT re-exec here. Calling os.execv while Textual still
+        owns the terminal (alternate screen + raw mode) skips Textual's teardown
+        and leaves the terminal corrupted. Instead we flag the reload and exit;
+        run() performs the re-exec once app.run() has returned and the terminal
+        has been restored.
+        """
+        from tui.hot_reload import save_tui_state
 
-        # Log reload notification
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.query_one(TranscriptPane).append_text(f"\n[hot-reload] Reloading at {timestamp}...\n")
-
-        # Save state for restoration after restart
+        # Save state for restoration after restart, then exit so the terminal is
+        # restored before run() re-execs the process.
         save_tui_state(self)
-
-        # Restart the process
-        do_reload()
+        self._reload_requested = True
+        self.exit()
 
     def _do_quit(self) -> None:
         """Tear down gracefully: end the steering loop, then exit the app."""

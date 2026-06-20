@@ -17,3 +17,11 @@ def run(task: str, hot_reload: bool = False) -> None:
     app = AgentApp(task, pending, hot_reload=hot_reload)
     set_app(app)
     app.run()
+
+    # Hot reload: trigger_reload() requests a restart by exiting the app rather
+    # than execing mid-render (which would corrupt the terminal). Now that
+    # app.run() has returned and Textual has restored the terminal, re-exec.
+    if getattr(app, "_reload_requested", False):
+        from tui.hot_reload import do_reload
+
+        do_reload()
