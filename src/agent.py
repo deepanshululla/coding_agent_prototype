@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
+from allowlist import check_command
 from prompts import build_system_prompt
 from provider import stream_response
 from renderer import emit
@@ -160,6 +161,23 @@ async def _execute_one_tool(tool_call: dict) -> ToolResult:
     """
     name = tool_call["name"]
     args = tool_call["input"]
+
+    # ── Command allowlist gate (bash only) ────────────────────────────────
+    # Default-deny: only explicitly permitted programs may run via bash.
+    # Sits at the beforeToolCall position — after the call is parsed, before
+    # the tool function is dispatched. A denial returns is_error=True so the
+    # model reads the reason and adapts rather than crashing.
+    if name == "bash":
+        verdict = check_command(args.get("command", ""))
+        if not verdict.allowed:
+            emit({"type": "tool_call_end", "index": tool_call.get("index", 0),
+                  "tool_call_id": tool_call["id"], "name": name,
+                  "content": f"Error: {verdict.reason}", "is_error": True, "chars": 0})
+            return ToolResult(
+                tool_call["id"], name, f"Error: {verdict.reason}", is_error=True
+            )
+    # ─────────────────────────────────────────────────────────────────────
+
     # tool_call_start was already emitted during streaming; no event here.
     fn = TOOL_REGISTRY.get(name)
     if fn is None:

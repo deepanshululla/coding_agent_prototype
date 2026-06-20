@@ -35,10 +35,11 @@ The built-in limits are reliability controls, NOT security controls:
 Each of these reduces the *window* for mischief but stops nothing. The actual
 controls (allowlist, permission mode, sandboxing) arrive in Layers 12.2–12.5.
 
-After Layer 12.2 adds the default-deny allowlist, the last two assertions in the
-scenario below FLIP: ``rm`` is not allowlisted, so the command is refused with a
-``ToolResult(is_error=True)`` *before* execution. Keep this scenario in the file
-as historical context and update the comment at that point.
+Layer 12.2 has now added the default-deny allowlist, so this scenario has FLIPPED:
+``rm`` is not allowlisted, so the command is refused with a
+``ToolResult(is_error=True)`` *before* execution. The test below is kept as the
+historical red-line context in its flipped (post-12.2) form — it now proves the
+gate blocks the destructive command instead of executing it.
 """
 
 from __future__ import annotations
@@ -72,28 +73,28 @@ class ScriptedLLM:
         return _gen()
 
 
-def test_unguarded_agent_executes_destructive_command(monkeypatch):
-    """Scenario: Unguarded agent would execute a destructive command.
+def test_allowlist_gate_refuses_destructive_command(monkeypatch):
+    """Scenario: After Layer 12.2 the allowlist refuses a destructive command.
 
-    Given the agent from Phase 11 with no command allowlist and no permission gate
+    Given the agent with the command allowlist gate installed in _execute_one_tool
+    And "rm" is not in the allowed programs list
     When the agent is given the task
          "delete all .pyc files by running: rm -rf __pycache__"
-    Then the agent calls the bash tool with command "rm -rf __pycache__"
-    And the command executes without prompting the user for confirmation
-    And no ToolResult with is_error=True is returned before execution
+    Then the agent requests bash with command "rm -rf __pycache__"
+    And _execute_one_tool returns a ToolResult with is_error=True
+    And the ToolResult content contains "not an allowed command"
+    And the bash tool function is never called
 
-    This PASSES against the unguarded Phase 11 agent — that is the "red" proof
-    that the next layers are necessary. We stub ``tools.bash`` to record the
-    command (rather than actually deleting files), so the test observes dispatch
-    and execution without side effects on the working tree.
+    This is the flipped form of the Phase 12.1 red-line scenario: before the
+    Layer 12.2 gate the unguarded agent executed ``rm`` outright; with the gate
+    installed the command is refused *before* dispatch. We stub ``tools.bash``
+    to record any invocation, so the test proves the function is never reached.
     """
     destructive_cmd = "rm -rf __pycache__"
     executed: list[str] = []
 
     async def fake_bash(command: str) -> str:
-        # Stands in for the real bash; records the command instead of running it.
-        # There is NO allowlist check and NO confirmation prompt between dispatch
-        # and arrival here — reaching this point IS the execution path.
+        # If this records anything, the gate failed to block the command.
         executed.append(command)
         return "(exit code 0)\n"
 
@@ -127,14 +128,10 @@ def test_unguarded_agent_executes_destructive_command(monkeypatch):
         )
     )
 
-    # Then: the agent called bash with exactly the destructive command, once,
-    # with no confirmation gate in the way.
-    assert executed == [destructive_cmd]
+    # Then: the bash function was never called — the gate refused before dispatch.
+    assert executed == []
 
-    # And: no error tool result was injected before execution — the tool message
-    # carries the (successful) execution output, not a refusal.
+    # And: an is_error tool result was injected, carrying the refusal reason.
     tool_messages = [m for m in messages if m.get("role") == "tool"]
     assert len(tool_messages) == 1
-    assert "Error" not in tool_messages[0]["content"]
-    # The unguarded loop emits no is_error result for this call. After Layer 12.2
-    # the allowlist will refuse `rm` here with is_error=True before execution.
+    assert "not an allowed command" in tool_messages[0]["content"]
