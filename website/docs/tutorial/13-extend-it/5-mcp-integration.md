@@ -6,6 +6,10 @@ description: Connect MCP servers via AGENT_MCP_CONFIG and merge their tools into
 
 # Layer 13.5 — MCP Integration
 
+:::note Implemented
+This step is implemented on branch `step/phase-13-5-mcp-integration` (plan: `plans/tutorial/phase-13-5-mcp-integration.md`).
+:::
+
 :::note Starting point
 Layer 13.4 complete: Agent Skills are installed and loaded on demand via `load_skill`. The test suite passes.
 :::
