@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-10-2-transcript
 
 # Phase 10.2 — The Transcript Pane
 

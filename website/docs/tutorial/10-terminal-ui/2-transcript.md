@@ -6,6 +6,10 @@ description: Build a minimal Textual app with a scrolling transcript pane and wi
 
 # Layer 10.2 — The Transcript Pane
 
+:::note Implemented
+This step is implemented on branch `step/phase-10-2-transcript` (plan: `plans/tutorial/phase-10-2-transcript.md`).
+:::
+
 :::note Starting point
 The `emit()` seam and `StdoutRenderer` from Layer 10.1. Running `AGENT_UI=stdout uv run main.py "..."` produces identical output to Phase 9. The `renderer.py` selector exists but the `tui` branch raises `ImportError` because `src/tui/` doesn't exist yet.
 :::
