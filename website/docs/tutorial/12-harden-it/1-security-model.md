@@ -6,6 +6,10 @@ description: Understand the threat model for an unguarded LLM-driven agent and w
 
 # Layer 12.1 — The Security Model
 
+:::note Implemented
+This step is implemented on branch `step/phase-12-1-security-model` (plan: `plans/tutorial/phase-12-1-security-model.md`).
+:::
+
 :::note Starting point
 The LiteLLM agent from Phase 11: `src/agent.py`, `src/provider.py`, `src/tools.py`, `src/prompts.py`, `src/types_.py`, `main.py`. The agent takes a task, calls LiteLLM, and executes whatever tool calls the model emits — including `bash` — with no guards, no approval prompts, and no restrictions on what the shell may do.
 :::
