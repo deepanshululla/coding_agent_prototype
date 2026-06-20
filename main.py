@@ -63,10 +63,15 @@ def main() -> None:
     from prompts import build_system_prompt
 
     cwd = os.getcwd()
-    system_prompt = build_system_prompt(
-        cwd=cwd,
-        extra=load_project_instructions(cwd),
+
+    # Per-session override (Layer 13.2): AGENT_SESSION_CONTEXT injects extra
+    # context for just this run, composed alongside the always-on project
+    # instructions. Both land at the bottom of the system prompt via extra=.
+    session_override = os.environ.get("AGENT_SESSION_CONTEXT", "")
+    extra = "\n\n".join(
+        filter(None, [load_project_instructions(cwd), session_override])
     )
+    system_prompt = build_system_prompt(cwd=cwd, extra=extra)
 
     if os.getenv("AGENT_UI", "stdout") == "tui":
         from tui import run
@@ -74,8 +79,15 @@ def main() -> None:
         run(task)
     else:
         from agent import run_agent
+        from hooks import log_after_tool_call
 
-        asyncio.run(run_agent(task, system_prompt=system_prompt))
+        asyncio.run(
+            run_agent(
+                task,
+                system_prompt=system_prompt,
+                after_tool_call=log_after_tool_call,
+            )
+        )
 
 
 if __name__ == "__main__":
