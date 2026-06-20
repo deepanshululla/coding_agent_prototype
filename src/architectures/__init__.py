@@ -10,4 +10,4 @@ the alternates are available by name without creating an import cycle (these
 modules import agent for its loop primitives).
 """
 
-from . import orchestrator_worker  # noqa: F401
+from . import evaluator_optimizer, orchestrator_worker  # noqa: F401
