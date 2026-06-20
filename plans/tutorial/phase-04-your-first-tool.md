@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-04-your-first-tool
 
 # Phase 4 — Your First Tool
 

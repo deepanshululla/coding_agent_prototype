@@ -6,6 +6,10 @@ description: Define a tool schema, let the model request it, execute it, and fee
 
 # Phase 4 — Your First Tool
 
+:::note Implemented
+This step is implemented on branch `step/phase-04-your-first-tool` (plan: `plans/tutorial/phase-04-your-first-tool.md`).
+:::
+
 :::note Starting point
 Phase 3's streaming `run_agent` — it accumulates text deltas but has no tools yet. This phase gives the model its first tool.
 :::

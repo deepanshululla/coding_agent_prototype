@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 import agent
-from provider import _chunk
+from provider import _chunk, _tc
 
 
 class ScriptedLLM:
@@ -81,6 +81,51 @@ def test_streaming_empty_stream_terminates(monkeypatch):
     assert len(messages) == 2
     assert messages[1]["role"] == "assistant"
     assert messages[1]["content"] in (None, "")
+
+
+def test_tool_call_then_stop(monkeypatch, tmp_path):
+    """A read_file call executes and its content lands in a role:tool message."""
+    target = tmp_path / "hello.txt"
+    target.write_text("hello from the file")
+
+    # Turn 1: model requests read_file with complete arguments.
+    turn1 = [
+        _chunk(
+            tool_calls=[
+                _tc(
+                    0,
+                    id="call_abc",
+                    name="read_file",
+                    arguments=f'{{"path": "{target}"}}',
+                )
+            ],
+        ),
+        _chunk(finish_reason="tool_calls"),
+    ]
+    # Turn 2: model summarizes and stops.
+    turn2 = [
+        _chunk(content="The file says: hello from the file."),
+        _chunk(finish_reason="stop"),
+    ]
+    monkeypatch.setattr(agent, "stream_response", ScriptedLLM([turn1, turn2]))
+
+    messages = asyncio.run(agent.run_agent("read hello.txt"))
+
+    # Assistant turn 1 carries the tool_calls field.
+    assistant1 = messages[1]
+    assert assistant1["role"] == "assistant"
+    assert assistant1["tool_calls"][0]["function"]["name"] == "read_file"
+    # arguments stay as a JSON string, not a dict.
+    assert isinstance(assistant1["tool_calls"][0]["function"]["arguments"], str)
+
+    # A role:tool message follows with the file content.
+    tool_msg = messages[2]
+    assert tool_msg["role"] == "tool"
+    assert tool_msg["tool_call_id"] == "call_abc"
+    assert "hello from the file" in tool_msg["content"]
+
+    # Final turn: model's summary.
+    assert messages[-1]["content"] == "The file says: hello from the file."
 
 
 @pytest.mark.asyncio
