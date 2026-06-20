@@ -26,10 +26,11 @@ class InputBox(Input):
     to the base Input.Submitted and re-emit our own distinctly-named message.
     """
 
+    # Layout (height 1, no border) comes from compact=True at construction; this
+    # only sets the surface background. A tall focus border would squeeze the
+    # single text row out of view, so the box must stay compact.
     DEFAULT_CSS = """
     InputBox {
-        height: 1;
-        border: none;
         background: $surface;
     }
     """

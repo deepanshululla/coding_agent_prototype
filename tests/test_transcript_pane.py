@@ -119,6 +119,8 @@ def test_history_matches_stdout_run(monkeypatch):
         app = AgentApp("explain the agent loop")
         set_app(app)
         async with app.run_test() as pilot:
+            # End the persistent steering loop so run_agent returns its history.
+            app.request_shutdown()
             for _ in range(50):
                 await pilot.pause()
                 if app.agent_history is not None:

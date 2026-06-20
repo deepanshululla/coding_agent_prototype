@@ -1,4 +1,5 @@
 import inspect
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -94,13 +95,60 @@ async def test_use_claude_cli_skips_litellm(monkeypatch):
     assert chunks[0].choices[0].delta.content == "from-cli"
 
 
+# ── stream-json line parsing (token-level streaming on the CLI path) ─────────
+
+
+def _delta_line(text: str) -> bytes:
+    """One stream-json content_block_delta NDJSON line carrying a text token."""
+    return (
+        json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "index": 0,
+                    "delta": {"type": "text_delta", "text": text},
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+
+
+def test_parse_stream_json_text_extracts_text_delta():
+    assert provider._parse_stream_json_text(_delta_line("Hello")) == "Hello"
+
+
+def test_parse_stream_json_text_ignores_non_text_events():
+    # System init, message_start, result, and non-text deltas carry no token.
+    for obj in (
+        {"type": "system", "subtype": "init"},
+        {"type": "stream_event", "event": {"type": "message_start"}},
+        {
+            "type": "stream_event",
+            "event": {
+                "type": "content_block_delta",
+                "delta": {"type": "thinking_delta", "thinking": "x"},
+            },
+        },
+        {"type": "result", "subtype": "success", "result": "done"},
+    ):
+        assert provider._parse_stream_json_text((json.dumps(obj) + "\n").encode()) is None
+
+
+def test_parse_stream_json_text_ignores_non_json_lines():
+    assert provider._parse_stream_json_text(b"not json at all\n") is None
+    assert provider._parse_stream_json_text(b"\n") is None
+
+
 @pytest.mark.asyncio
 async def test_claude_cli_stream_chunk_shape(monkeypatch):
-    """_claude_cli_stream spawns `claude -p` and yields OpenAI-format chunks.
+    """_claude_cli_stream spawns `claude -p` in stream-json mode and yields
+    OpenAI-format chunks built from each text_delta — true token streaming.
 
-    BDD: a claude subprocess is spawned with the -p flag, and text chunks from
-    the CLI are yielded in the same OpenAI-format shape (choices[0].delta /
-    finish_reason) the agent loop already consumes.
+    BDD: a claude subprocess is spawned with -p and --output-format stream-json,
+    each content_block_delta becomes a text_delta chunk in the same OpenAI shape
+    (choices[0].delta / finish_reason) the agent loop already consumes.
     """
     spawned = {}
 
@@ -113,7 +161,15 @@ async def test_claude_cli_stream_chunk_shape(monkeypatch):
 
     class FakeProc:
         def __init__(self):
-            self.stdout = FakeStdout([b"Hello ", b"world\n"])
+            # A realistic stream: init noise, two token deltas, then a result.
+            self.stdout = FakeStdout(
+                [
+                    b'{"type":"system","subtype":"init"}\n',
+                    _delta_line("Hello "),
+                    _delta_line("world"),
+                    b'{"type":"result","subtype":"success","result":"Hello world"}\n',
+                ]
+            )
 
         async def wait(self):
             return 0
@@ -128,17 +184,20 @@ async def test_claude_cli_stream_chunk_shape(monkeypatch):
         c async for c in provider._claude_cli_stream([{"role": "user", "content": "hi"}], "sp")
     ]
 
-    # Spawned the claude binary with the -p flag.
+    # Spawned the claude binary in -p stream-json mode.
     assert spawned["args"][0] == "claude"
     assert "-p" in spawned["args"]
+    assert "--output-format" in spawned["args"]
+    assert "stream-json" in spawned["args"]
 
     # Every chunk is the OpenAI-format shape the loop reads.
     for c in chunks:
         assert isinstance(c, SimpleNamespace)
         assert hasattr(c.choices[0].delta, "content")
 
+    # Only the two token deltas contribute text — init/result noise is dropped.
     text = "".join(c.choices[0].delta.content or "" for c in chunks)
-    assert "Hello" in text and "world" in text
+    assert text == "Hello world"
 
     # The final chunk carries a finish_reason so the loop terminates the turn.
     assert chunks[-1].choices[0].finish_reason == "stop"
