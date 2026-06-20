@@ -6,6 +6,10 @@ description: Wrap run_agent() in a stdin/stdout JSON-RPC loop (default) or a Fas
 
 # Layer 14.2 — RPC Mode
 
+:::note Implemented
+This step is implemented on branch `step/phase-14-2-rpc-mode` (plan: `plans/tutorial/phase-14-2-rpc-mode.md`).
+:::
+
 :::note Starting point
 Layer 14.1 complete: `src/sdk.py` exists and `run_agent_collecting()` gathers typed events from the emit() seam alongside the message history.
 :::

@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-14-2-rpc-mode
 
 # Phase 14.2 — RPC Mode
 
