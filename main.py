@@ -97,6 +97,30 @@ def _extract_dir(args: list[str]) -> tuple[list[str], str | None]:
     return remaining, directory
 
 
+def _extract_hot_reload(args: list[str]) -> tuple[list[str], bool]:
+    """Pull a ``--hot-reload`` flag out of ``args``.
+
+    ``--hot-reload`` enables hot reload mode for the TUI. Returns the remaining
+    args and True if the flag is present, False otherwise.
+    """
+    if "--hot-reload" not in args:
+        return args, False
+
+    idx = args.index("--hot-reload")
+    remaining = args[:idx] + args[idx + 1 :]
+    return remaining, True
+
+
+def _should_enable_hot_reload(flag: bool) -> bool:
+    """Check if hot reload should be enabled based on flag or env var.
+
+    The --hot-reload flag takes precedence; otherwise check AGENT_HOT_RELOAD=1.
+    """
+    if flag:
+        return True
+    return os.getenv("AGENT_HOT_RELOAD", "").strip() == "1"
+
+
 def _resolve_dir(path: str) -> str:
     """Validate ``path`` is an existing directory and return its absolute form.
 
@@ -109,6 +133,21 @@ def _resolve_dir(path: str) -> str:
     if not p.is_dir():
         raise SystemExit(f"--dir: not a directory: {path}")
     return str(p.resolve())
+
+
+def _initial_task(args: list[str], ui: str) -> str:
+    """Resolve the initial task string.
+
+    Args on the command line are always used. With none, the stdout path prompts
+    on stdin (interactive use), but the TUI returns "" — it launches idle and
+    waits for the first message typed into the input box, so it must never block
+    on input() before the full-screen UI takes over the terminal.
+    """
+    if args:
+        return " ".join(args)
+    if ui == "tui":
+        return ""
+    return input("Task: ")
 
 
 def main() -> None:
@@ -139,6 +178,10 @@ def main() -> None:
     if directory is not None:
         os.chdir(_resolve_dir(directory))
 
+    # --hot-reload: enable TUI hot reload mode for rapid iteration.
+    args, hot_reload_flag = _extract_hot_reload(args)
+    hot_reload = _should_enable_hot_reload(hot_reload_flag)
+
     # --sandbox: run inside a throwaway git worktree (Layer 12.4). The flag must
     # be the first argument; everything after it is the task.
     if args and args[0] == "--sandbox":
@@ -156,8 +199,10 @@ def main() -> None:
         print(f"    Discard: git worktree remove {worktree} --force")
         return
 
-    task = " ".join(args) if args else input("Task: ")
-    if not task.strip():
+    ui = os.getenv("AGENT_UI", "stdout")
+    task = _initial_task(args, ui)
+    # The TUI may start with no task (it waits for input); stdout needs one.
+    if ui != "tui" and not task.strip():
         print("No task provided.")
         return
 
@@ -173,12 +218,12 @@ def main() -> None:
     session_override = os.environ.get("AGENT_SESSION_CONTEXT", "")
     extra = "\n\n".join(filter(None, [load_project_instructions(cwd), session_override]))
 
-    if os.getenv("AGENT_UI", "stdout") == "tui":
+    if ui == "tui":
         # The TUI path keeps its own prompt build; MCP wiring lives on the
         # stdout path (Layer 13.5) where session lifecycle is easy to manage.
         from tui import run
 
-        run(task)
+        run(task, hot_reload=hot_reload)
     else:
         asyncio.run(_run_stdout(task, cwd=cwd, extra=extra, skills=active_skills, model=model))
 
