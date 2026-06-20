@@ -1,4 +1,5 @@
-Status: not started
+Status: done
+Branch: step/phase-16-context-compaction
 
 # Phase 16 — Context Compaction
 

@@ -6,6 +6,10 @@ description: As the message history grows, the context window fills. Compaction 
 
 # Phase 16 — Context Compaction
 
+:::note Implemented
+This step is implemented on branch `step/phase-16-context-compaction` (plan: `plans/tutorial/phase-16-context-compaction.md`).
+:::
+
 :::note Starting point
 The steerable agent from Phase 15. It accepts mid-session redirects via `pending_messages`. Steering sessions can run long — and long sessions fill the context window.
 :::
