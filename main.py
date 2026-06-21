@@ -2,6 +2,9 @@
 
 Usage:
     uv run main.py "add type hints to all functions in tools.py"
+    uv run main.py --model gpt-4o "explain the code"
+    uv run main.py --ollama llama3.2 "fix the bug"
+    uv run main.py --ollama "summarize"  # uses ollama/llama3.2 by default
 
 With no argument, prompts for a task interactively. Set AGENT_UI=tui to
 launch the full-screen Textual UI; the default (stdout) streams to the
@@ -77,6 +80,38 @@ def _extract_model(args: list[str]) -> tuple[list[str], str | None]:
     model = args[idx + 1] if idx + 1 < len(args) else None
     remaining = args[:idx] + args[idx + 2 :]
     return remaining, model
+
+
+def _extract_ollama(args: list[str]) -> tuple[list[str], str | None]:
+    """Pull an ``--ollama`` flag out of ``args``.
+
+    ``--ollama`` with no argument uses the default ``ollama/llama3.2`` model.
+    ``--ollama <model>`` uses ``ollama/<model>`` (adds the prefix if missing).
+    The flag overrides both ``--model`` and ``AGENT_MODEL``. Returns the
+    remaining args and the model string (``None`` when the flag is absent).
+    """
+    if "--ollama" not in args:
+        return args, None
+
+    idx = args.index("--ollama")
+    remaining = args[:idx]
+
+    # Check if there's a next token that's not a flag or the task
+    if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
+        next_token = args[idx + 1]
+        # If it looks like a model name (not whitespace-bearing), consume it
+        if next_token.split() == [next_token]:
+            # Add ollama/ prefix if not already present
+            if next_token.startswith("ollama/"):
+                model = next_token
+            else:
+                model = f"ollama/{next_token}"
+            remaining.extend(args[idx + 2 :])
+            return remaining, model
+
+    # No model specified, use default
+    remaining.extend(args[idx + 1 :])
+    return remaining, "ollama/llama3.2"
 
 
 def _extract_architecture(args: list[str]) -> tuple[list[str], str | None]:
@@ -191,6 +226,12 @@ def main() -> None:
     # AGENT_MODEL env var. `model is None` falls back to the configured MODEL.
     args, model = _extract_model(args)
 
+    # --ollama: convenient shorthand for --model ollama/<model>. Takes precedence
+    # over --model when both are present.
+    args, ollama_model = _extract_ollama(args)
+    if ollama_model is not None:
+        model = ollama_model
+
     # --architecture: pick the control-flow strategy for this run, overriding the
     # AGENT_ARCHITECTURE env var. `architecture is None` falls back to the
     # configured default ("reactive").
@@ -248,7 +289,7 @@ def main() -> None:
         # stdout path (Layer 13.5) where session lifecycle is easy to manage.
         from tui import run
 
-        run(task, hot_reload=hot_reload)
+        run(task, hot_reload=hot_reload, model=model)
     else:
         asyncio.run(
             _run_stdout(

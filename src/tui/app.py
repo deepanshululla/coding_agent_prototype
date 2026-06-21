@@ -87,11 +87,13 @@ class AgentApp(App):
         task: str,
         pending_messages: list[dict] | None = None,
         hot_reload: bool = False,
+        model: str | None = None,
     ) -> None:
         super().__init__()
         # NB: Textual's App reserves both `task` (a read-only property) and the
         # private `_task` attribute (the run Task), so store ours distinctly.
         self._agent_task = task
+        self._model = model
         # Legacy echo list (Phase 10.4): the input box still records submissions
         # here for callers that read it, but the steering *channel* is the queue
         # below — that is what actually continues the run.
@@ -125,6 +127,14 @@ class AgentApp(App):
         # is an OpenAI-style {"type": "image_url", ...} block folded into the
         # user message on Enter; cleared once that message is sent.
         self._pending_images: list[dict] = []
+        # Running token totals across the session, accumulated from each turn's
+        # reported usage (turn_end). Surfaced by the /usage command; stays zero
+        # when the provider reports no usage (e.g. the text-only CLI fork).
+        self.session_usage: dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
 
     def check_action(self, action: str, parameters: object) -> bool:
         # Scroll motions only fire in NORMAL; INSERT owns the keyboard for typing
@@ -206,6 +216,7 @@ class AgentApp(App):
                     self._agent_task,
                     cancel_event=self.cancel_event,
                     get_steering_messages=self._get_steering,
+                    model=self._model,
                 )
             except asyncio.CancelledError:
                 raise  # app is shutting down — let the task unwind cleanly
@@ -373,6 +384,19 @@ class AgentApp(App):
         if message.text.strip().lower() in self._QUIT_WORDS:
             self._do_quit()
             return
+        # Slash commands are macros run locally, not sent to the agent. A "/"-led
+        # line is dispatched and its output echoed in the transcript; the agent's
+        # context never sees it and no steering message is queued.
+        if message.text.startswith("/"):
+            from tui.commands import dispatch
+
+            output = dispatch(self, message.text)
+            if output is not None:
+                pane = self.query_one(TranscriptPane)
+                pane.append_user_text(f"\n{message.text}\n")
+                pane.append_text(f"{output}\n")
+                self.action_enter_normal()
+                return
         # When images are buffered (Ctrl+V), send multimodal list content — text
         # block first, then each image block — and clear the buffer. With none,
         # content stays a plain string so the non-image path is unchanged.
@@ -397,7 +421,10 @@ class AgentApp(App):
         elif t == "thinking_delta":
             self.query_one(ActivityPanel).note_thinking()
         elif t == "tool_call_start":
-            self.query_one(ActivityPanel).add_tool(event["index"], event["name"])
+            tool_input = event.get("input") or {}
+            self.query_one(ActivityPanel).add_tool(event["index"], event["name"], tool_input)
+            # Echo the call in the main window, naming the file / command / change.
+            self.query_one(TranscriptPane).append_tool_call(event["name"], tool_input)
         elif t == "tool_call_end":
             self.query_one(ActivityPanel).finish_tool(
                 event["index"],
@@ -410,6 +437,12 @@ class AgentApp(App):
             self.query_one(ActivityPanel).end_turn(
                 event["iteration"], event["finish_reason"], event["tool_calls_count"]
             )
+            # Accumulate token usage for the /usage command (None when the
+            # provider reported none, e.g. the text-only CLI fork).
+            usage = event.get("usage")
+            if usage:
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    self.session_usage[key] += usage.get(key, 0)
             self.query_one(StatusBar).set_iteration(event["iteration"])
         elif t == "agent_end":
             self.query_one(StatusBar).set_done(event["total_iterations"])

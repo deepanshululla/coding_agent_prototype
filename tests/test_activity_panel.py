@@ -25,6 +25,7 @@ import asyncio
 from rich.text import Text
 
 import agent
+import provider
 import tui.emit
 from provider import _chunk, _tc
 from tui.app import AgentApp
@@ -50,7 +51,25 @@ def test_start_turn_adds_model_spinner_row():
             await pilot.pause()
             assert panel.log.row_count == 1
             assert _cell(panel, "t1", "icon") == "⏳"
-            assert "turn 1" in _cell(panel, "t1", "label")
+            assert "t1" in _cell(panel, "t1", "label")
+
+    asyncio.run(_run())
+
+
+def test_start_turn_shows_shortened_model_name():
+    """The turn row names the model (provider prefix and 'claude-' stripped) so
+    the operator can see which model served the turn, not just 'model'."""
+
+    async def _run():
+        app = AgentApp("noop")
+        async with app.run_test() as pilot:
+            panel = app.query_one(ActivityPanel)
+            panel.start_turn(1, "anthropic/claude-sonnet-4-5")
+            await pilot.pause()
+            label = _cell(panel, "t1", "label")
+            assert "sonnet-4-5" in label
+            assert "claude-" not in label
+            assert "t1" in label
 
     asyncio.run(_run())
 
@@ -133,9 +152,9 @@ def test_log_persists_across_turns():
             panel.add_tool(0, "write_file")
             await pilot.pause()
             # Turn 1's rows are still present alongside turn 2's.
-            assert _cell(panel, "t1", "label").endswith("turn 1")
+            assert _cell(panel, "t1", "label").endswith("t1")
             assert _cell(panel, "t1-tool0", "label") == "read_file"
-            assert _cell(panel, "t2", "label").endswith("turn 2")
+            assert _cell(panel, "t2", "label").endswith("t2")
             assert _cell(panel, "t2-tool0", "label") == "write_file"
             assert panel.log.row_count == 4
 
@@ -195,6 +214,105 @@ def _tool_then_text_turns(path: str):
             _chunk(finish_reason="stop"),
         ],
     ]
+
+
+# ── CLI fork: subprocess tool calls reach the panel ──────────────────────────
+
+
+def test_cli_fork_tool_calls_reach_panel(monkeypatch):
+    """End-to-end for the `claude -p` fork: the subprocess runs its own tools, and
+    _claude_cli_stream surfaces them as tool_call_start / tool_call_end events that
+    flow through the live app into the activity panel as a resolved tool row."""
+    import json
+
+    def _tool_start(tool_id, name, tool_input=None):
+        return (
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": tool_id,
+                                "name": name,
+                                "input": tool_input or {},
+                            }
+                        ]
+                    },
+                }
+            )
+            + "\n"
+        ).encode()
+
+    def _tool_result(tool_id, content):
+        return (
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": tool_id, "content": content}
+                        ]
+                    },
+                }
+            )
+            + "\n"
+        ).encode()
+
+    class FakeStdout:
+        def __init__(self, lines):
+            self._lines = list(lines)
+
+        async def readline(self):
+            return self._lines.pop(0) if self._lines else b""
+
+    class FakeProc:
+        def __init__(self):
+            self.stdout = FakeStdout(
+                [
+                    _tool_start("toolu_a", "Read", {"file_path": "src/architecture.py"}),
+                    _tool_result("toolu_a", "abcde"),
+                ]
+            )
+
+        async def wait(self):
+            return 0
+
+    async def fake_exec(*args, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr(provider.asyncio, "create_subprocess_exec", fake_exec)
+    # Route the provider's display events into the live TUI app.
+    monkeypatch.setattr(provider.renderer, "emit", tui.emit.emit)
+
+    captured: dict = {}
+
+    async def _run():
+        # Empty task: no background agent run, so the only tool events are the
+        # ones from the explicit _claude_cli_stream call below. A non-empty task
+        # would start a background run that (via the monkeypatched subprocess)
+        # emits its own duplicate tool event, double-counting in the panel.
+        app = AgentApp("")
+        set_app(app)
+        async with app.run_test() as pilot:
+            panel = app.query_one(ActivityPanel)
+            # A turn must exist so tool rows hang off the current turn key.
+            panel.start_turn(1, "claude-sonnet-4-5")
+            async for _ in provider._claude_cli_stream([{"role": "user", "content": "hi"}], "sp"):
+                pass
+            await pilot.pause()
+            captured["icon"] = _cell(panel, "t1-tool0", "icon")
+            captured["label"] = _cell(panel, "t1-tool0", "label")
+            captured["detail"] = _cell(panel, "t1-tool0", "detail")
+            captured["tools_total"] = panel.totals_text
+
+    asyncio.run(_run())
+
+    assert captured["label"] == "Read architecture.py"  # names which file
+    assert captured["icon"] == "✓"
+    assert captured["detail"] == "5c"  # "abcde" is 5 chars
+    assert "1 tool" in captured["tools_total"]
 
 
 # ── BDD integration test: full run through AgentApp ──────────────────────────

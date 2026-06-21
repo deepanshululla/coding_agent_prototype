@@ -9,6 +9,7 @@ from typing import Any
 
 import litellm
 
+import renderer
 from config import MAX_TOKENS, MODEL, THINKING_BUDGET
 from tools import TOOLS_SCHEMA
 
@@ -66,7 +67,9 @@ USE_CLAUDE_CLI = os.environ.get("USE_CLAUDE_CLI_LLM", "") == "1"
 CLI_PERMISSION_MODE = os.environ.get("CLAUDE_CLI_PERMISSION_MODE", "bypassPermissions")
 
 
-def _chunk(content=None, finish_reason=None, tool_calls=None, thinking=None, signature=None):
+def _chunk(
+    content=None, finish_reason=None, tool_calls=None, thinking=None, signature=None, usage=None
+):
     """Build one OpenAI-format streaming chunk the agent loop understands.
 
     Uses SimpleNamespace so no provider SDK is needed in tests. litellm yields
@@ -86,7 +89,10 @@ def _chunk(content=None, finish_reason=None, tool_calls=None, thinking=None, sig
     if signature is not None:
         delta.signature = signature
     choice = SimpleNamespace(delta=delta, finish_reason=finish_reason)
-    return SimpleNamespace(choices=[choice])
+    # usage rides on the chunk (litellm puts it on the final chunk when
+    # stream_options.include_usage is set; the CLI fork synthesizes it from the
+    # stream-json result event). None on every other chunk.
+    return SimpleNamespace(choices=[choice], usage=usage)
 
 
 def _tc(index, id=None, name=None, arguments=None):
@@ -136,6 +142,8 @@ async def stream_response(
         tools=TOOLS_SCHEMA,
         tool_choice="auto",
         stream=True,
+        # Ask for token usage on the final streamed chunk so /usage can report it.
+        stream_options={"include_usage": True},
         **_thinking_kwargs(effective_model),
     )
     async for chunk in response:
@@ -185,28 +193,105 @@ def _messages_to_prompt(system_prompt: str, messages: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _parse_stream_json_text(line: bytes) -> str | None:
-    """Extract the text token from one `claude -p` stream-json NDJSON line.
+def _tool_result_chars(content: object) -> int:
+    """Character count of a tool_result's content (a string or list of blocks)."""
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if isinstance(block, dict):
+                total += len(str(block.get("text", "")))
+            else:
+                total += len(str(block))
+        return total
+    return 0
 
-    The CLI's stream-json output interleaves system/init/result events with the
-    per-token `content_block_delta` events we care about. We return the token
-    text only for a `text_delta` (skipping thinking deltas and every non-token
-    event), and None for noise or any line that is not valid JSON — so the caller
-    can stream tokens as they arrive instead of buffering the whole reply.
+
+def _parse_stream_json_line(line: bytes) -> list[dict]:
+    """Normalize one `claude -p` stream-json NDJSON line into UI descriptors.
+
+    The CLI interleaves several event shapes; we surface the ones the UI cares
+    about and ignore all other noise (and any non-JSON line):
+
+      text token   → {"kind": "text", "text": str}             (content_block_delta)
+      tool began   → {"kind": "tool_start", "id", "name", "input"}  (assistant msg)
+      tool result  → {"kind": "tool_end", "id", "is_error", "chars"}
+                                                                (user tool_result)
+      token usage  → {"kind": "usage", "prompt_tokens", "completion_tokens"}
+
+    Tool calls are read from the *complete* assistant message (not the partial
+    content_block_start) so the full input — which file, which command, the diff
+    — is available; text still streams token-by-token from content_block_delta.
+
+    The subprocess runs these tools itself, so tool descriptors are for display
+    only — the caller emits them as events but never feeds them back into the
+    agent's own tool loop. A message can carry several tool blocks, so this
+    returns a list. Returns [] for noise or invalid JSON.
     """
     try:
         obj = json.loads(line)
     except (ValueError, TypeError):
-        return None
-    if not isinstance(obj, dict) or obj.get("type") != "stream_event":
-        return None
+        return []
+    if not isinstance(obj, dict):
+        return []
+
+    # The complete assistant message carries finished tool_use blocks with full
+    # input — the source for "which file / command / diff".
+    if obj.get("type") == "assistant":
+        content = (obj.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            return []
+        return [
+            {
+                "kind": "tool_start",
+                "id": block.get("id") or "",
+                "name": block.get("name") or "tool",
+                "input": block.get("input") or {},
+            }
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "tool_use"
+        ]
+
+    # The terminal `result` event carries the run's token usage (input/output
+    # tokens). Surface it so the closing chunk can carry it to /usage.
+    if obj.get("type") == "result":
+        usage = obj.get("usage")
+        if isinstance(usage, dict):
+            return [
+                {
+                    "kind": "usage",
+                    "prompt_tokens": int(usage.get("input_tokens", 0)),
+                    "completion_tokens": int(usage.get("output_tokens", 0)),
+                }
+            ]
+        return []
+
+    # Tool results arrive as a top-level `user` message, not a stream_event.
+    if obj.get("type") == "user":
+        content = (obj.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            return []
+        return [
+            {
+                "kind": "tool_end",
+                "id": block.get("tool_use_id") or "",
+                "is_error": bool(block.get("is_error")),
+                "chars": _tool_result_chars(block.get("content")),
+            }
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "tool_result"
+        ]
+
+    if obj.get("type") != "stream_event":
+        return []
     event = obj.get("event") or {}
-    if event.get("type") != "content_block_delta":
-        return None
-    delta = event.get("delta") or {}
-    if delta.get("type") != "text_delta":
-        return None
-    return delta.get("text") or None
+    if event.get("type") == "content_block_delta":
+        delta = event.get("delta") or {}
+        if delta.get("type") == "text_delta" and delta.get("text"):
+            return [{"kind": "text", "text": delta["text"]}]
+
+    return []
 
 
 async def _claude_cli_stream(
@@ -222,8 +307,14 @@ async def _claude_cli_stream(
     consumes without knowing the backend changed. A final empty chunk carries
     finish_reason="stop" to close the turn.
 
-    Text-only: TOOLS_SCHEMA is not forwarded, so the agent's own tool loop is not
-    driven on this fork (the `claude -p` session uses its own tools internally).
+    The `claude -p` session runs its OWN tools internally, so TOOLS_SCHEMA is not
+    forwarded and the agent's own tool loop is not driven here. Those tool calls
+    would otherwise be invisible, so we parse the subprocess's tool_use /
+    tool_result events and emit display-only tool_call_start / tool_call_end
+    events (via renderer.emit) — the activity panel shows them, but they are
+    never fed back into the agent loop (which would wrongly re-dispatch them).
+    Each tool_use id is assigned a monotonic index so the panel keys distinct
+    rows even across the multiple assistant messages in one subprocess run.
     """
     prompt = _messages_to_prompt(system_prompt, messages)
     cmd = [
@@ -248,14 +339,52 @@ async def _claude_cli_stream(
 
     # stdout is typed Optional, but PIPE above guarantees a reader here.
     assert proc.stdout is not None
+    # Map each tool_use id to a monotonic display index so the activity panel
+    # keys distinct rows (block indices reset per assistant message and would
+    # otherwise collide across a multi-step subprocess run).
+    id_to_index: dict[str, int] = {}
+    next_index = 0
+    final_usage: dict | None = None
     while True:
         line = await proc.stdout.readline()
         if not line:
             break
-        text = _parse_stream_json_text(line)
-        if text:
-            yield _chunk(content=text)
+        for descriptor in _parse_stream_json_line(line):
+            kind = descriptor["kind"]
+            if kind == "usage":
+                final_usage = {
+                    "prompt_tokens": descriptor["prompt_tokens"],
+                    "completion_tokens": descriptor["completion_tokens"],
+                }
+            elif kind == "text":
+                yield _chunk(content=descriptor["text"])
+            elif kind == "tool_start":
+                id_to_index[descriptor["id"]] = next_index
+                renderer.emit(
+                    {
+                        "type": "tool_call_start",
+                        "index": next_index,
+                        "tool_call_id": descriptor["id"],
+                        "name": descriptor["name"],
+                        "input": descriptor.get("input") or {},
+                    }
+                )
+                next_index += 1
+            elif kind == "tool_end":
+                index = id_to_index.get(descriptor["id"])
+                if index is None:
+                    continue  # a result with no matching start — nothing to resolve
+                renderer.emit(
+                    {
+                        "type": "tool_call_end",
+                        "index": index,
+                        "tool_call_id": descriptor["id"],
+                        "is_error": descriptor["is_error"],
+                        "chars": descriptor["chars"],
+                    }
+                )
 
     await proc.wait()
-    # Close the turn so the loop's finish_reason check fires (no tool calls).
-    yield _chunk(finish_reason="stop")
+    # Close the turn so the loop's finish_reason check fires (no tool calls),
+    # carrying the run's token usage when the result event reported it.
+    yield _chunk(finish_reason="stop", usage=final_usage)

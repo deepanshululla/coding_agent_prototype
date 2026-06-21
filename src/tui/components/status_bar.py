@@ -72,6 +72,11 @@ class StatusBar(Static):
         self._error = message
         self._refresh_label()
 
+    def set_model(self, name: str) -> None:
+        """Show a new active model (e.g. after the /model command switches it)."""
+        self._model = name
+        self._refresh_label()
+
     def set_permission_mode(self, label: str) -> None:
         """Show the active permission mode (e.g. 'auto', 'edit', 'plan')."""
         self._permission = label

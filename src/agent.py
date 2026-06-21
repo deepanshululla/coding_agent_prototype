@@ -5,9 +5,10 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import provider
 from architecture import RunContext, get_architecture, register
 from compaction import compact_if_needed
-from config import ARCHITECTURE, MAX_ITERATIONS, MODEL
+from config import ARCHITECTURE, MAX_ITERATIONS
 from logging_config import logger
 from policy import PolicyEngine
 from prompts import build_system_prompt
@@ -60,6 +61,35 @@ class TurnResult:
     text: str
 
 
+def _normalize_usage(usage: object) -> dict | None:
+    """Coerce a provider usage object/dict into a uniform token-count dict.
+
+    litellm reports usage as an object with .prompt_tokens / .completion_tokens /
+    .total_tokens; the CLI fork synthesizes a plain dict with prompt/completion.
+    Returns {"prompt_tokens", "completion_tokens", "total_tokens"} (total filled
+    in from the parts when the provider omits it), or None when no usage exists.
+    """
+    if usage is None:
+        return None
+
+    def _as_int(value: object) -> int:
+        return value if isinstance(value, int) else 0
+
+    if isinstance(usage, dict):
+        prompt = _as_int(usage.get("prompt_tokens"))
+        completion = _as_int(usage.get("completion_tokens"))
+        total = _as_int(usage.get("total_tokens"))
+    else:
+        prompt = _as_int(getattr(usage, "prompt_tokens", 0))
+        completion = _as_int(getattr(usage, "completion_tokens", 0))
+        total = _as_int(getattr(usage, "total_tokens", 0))
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total or (prompt + completion),
+    }
+
+
 async def stream_turn(
     messages: list[dict],
     *,
@@ -78,20 +108,35 @@ async def stream_turn(
 
     # Announce the model call before any tokens stream so the UI can show it
     # starting (the activity panel adds a spinner row here). The matching
-    # turn_end is emitted once the stream completes.
-    emit({"type": "turn_start", "iteration": iteration, "model": model or MODEL})
+    # turn_end is emitted once the stream completes. provider.MODEL is the live
+    # default (the /model command mutates it), read here so the label reflects a
+    # mid-session switch when no per-run override is set.
+    emit(
+        {
+            "type": "turn_start",
+            "iteration": iteration,
+            "model": model or provider.MODEL,
+        }
+    )
 
     text_buf = ""
     thinking_buf = ""
     thinking_signature = None
     tool_acc: dict[int, dict] = {}
     finish_reason = None
+    usage = None
 
     async for chunk in stream_response(
         messages=context_to_send,
         system_prompt=system_prompt,
         model=model,
     ):
+        # Token usage rides on a chunk (litellm's final chunk has empty choices;
+        # the CLI fork puts it on the closing chunk). Capture it whenever present.
+        if getattr(chunk, "usage", None) is not None:
+            usage = chunk.usage
+        if not chunk.choices:
+            continue
         choice = chunk.choices[0]
         delta = choice.delta
         # Carry the last non-None finish_reason forward.
@@ -118,16 +163,26 @@ async def stream_turn(
             fn = getattr(tc_chunk, "function", None)
             if fn and fn.name:
                 slot["name"] = fn.name
-                emit(
-                    {
-                        "type": "tool_call_start",
-                        "index": idx,
-                        "tool_call_id": slot["id"],
-                        "name": fn.name,
-                    }
-                )
             if fn and fn.arguments:
                 slot["arguments_buf"] += fn.arguments
+
+    # Announce each tool call now that its arguments have fully streamed, so the
+    # event carries the parsed input (which file / command) the UI shows. This
+    # still precedes turn_end, matching the documented event order.
+    for idx, slot in sorted(tool_acc.items()):
+        try:
+            tool_input = json.loads(slot["arguments_buf"] or "{}")
+        except json.JSONDecodeError:
+            tool_input = {}
+        emit(
+            {
+                "type": "tool_call_start",
+                "index": idx,
+                "tool_call_id": slot["id"],
+                "name": slot["name"],
+                "input": tool_input,
+            }
+        )
 
     emit(
         {
@@ -135,6 +190,7 @@ async def stream_turn(
             "iteration": iteration,
             "finish_reason": finish_reason or "stop",
             "tool_calls_count": len(tool_acc),
+            "usage": _normalize_usage(usage),
         }
     )
 

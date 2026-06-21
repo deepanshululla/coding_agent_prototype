@@ -122,30 +122,145 @@ def _delta_line(text: str) -> bytes:
     ).encode()
 
 
-def test_parse_stream_json_text_extracts_text_delta():
-    assert provider._parse_stream_json_text(_delta_line("Hello")) == "Hello"
+# ── stream-json tool parsing (tool_use / tool_result on the CLI path) ─────────
 
 
-def test_parse_stream_json_text_ignores_non_text_events():
-    # System init, message_start, result, and non-text deltas carry no token.
-    for obj in (
-        {"type": "system", "subtype": "init"},
-        {"type": "stream_event", "event": {"type": "message_start"}},
+def _tool_start_line(tool_id: str, name: str, tool_input: dict | None = None) -> bytes:
+    """A complete assistant message carrying one finished tool_use block.
+
+    Tool calls are read from the complete assistant message (not the partial
+    content_block_start), so the full input is available to the UI.
+    """
+    return (
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": tool_id,
+                            "name": name,
+                            "input": tool_input or {},
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+
+
+def _tool_result_line(tool_id: str, content: str, is_error: bool = False) -> bytes:
+    """A top-level user message carrying the subprocess's tool_result block."""
+    return (
+        json.dumps(
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_id,
+                            "content": content,
+                            "is_error": is_error,
+                        }
+                    ]
+                },
+            }
+        )
+        + "\n"
+    ).encode()
+
+
+def test_parse_stream_json_line_text_descriptor():
+    assert provider._parse_stream_json_line(_delta_line("Hi")) == [{"kind": "text", "text": "Hi"}]
+
+
+def test_parse_stream_json_line_tool_start_descriptor():
+    line = _tool_start_line("toolu_1", "Read", {"file_path": "src/agent.py"})
+    assert provider._parse_stream_json_line(line) == [
         {
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "delta": {"type": "thinking_delta", "thinking": "x"},
-            },
-        },
-        {"type": "result", "subtype": "success", "result": "done"},
-    ):
-        assert provider._parse_stream_json_text((json.dumps(obj) + "\n").encode()) is None
+            "kind": "tool_start",
+            "id": "toolu_1",
+            "name": "Read",
+            "input": {"file_path": "src/agent.py"},
+        }
+    ]
 
 
-def test_parse_stream_json_text_ignores_non_json_lines():
-    assert provider._parse_stream_json_text(b"not json at all\n") is None
-    assert provider._parse_stream_json_text(b"\n") is None
+def test_parse_stream_json_line_tool_result_descriptor():
+    assert provider._parse_stream_json_line(_tool_result_line("toolu_1", "hello world")) == [
+        {"kind": "tool_end", "id": "toolu_1", "is_error": False, "chars": 11}
+    ]
+
+
+def test_parse_stream_json_line_tool_result_error():
+    [d] = provider._parse_stream_json_line(_tool_result_line("toolu_2", "boom", is_error=True))
+    assert d["kind"] == "tool_end"
+    assert d["is_error"] is True
+
+
+def test_parse_stream_json_line_ignores_noise():
+    assert provider._parse_stream_json_line(b"not json\n") == []
+    assert provider._parse_stream_json_line(b'{"type":"system","subtype":"init"}\n') == []
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_stream_emits_tool_events(monkeypatch):
+    """The subprocess runs its own tools; _claude_cli_stream surfaces them as
+    tool_call_start / tool_call_end events (for the activity panel) WITHOUT
+    yielding them as tool_call chunks (which would make the agent re-dispatch).
+    """
+
+    class FakeStdout:
+        def __init__(self, lines):
+            self._lines = list(lines)
+
+        async def readline(self):
+            return self._lines.pop(0) if self._lines else b""
+
+    class FakeProc:
+        def __init__(self):
+            self.stdout = FakeStdout(
+                [
+                    _delta_line("Looking… "),
+                    _tool_start_line("toolu_a", "Read", {"file_path": "src/x.py"}),
+                    _tool_result_line("toolu_a", "file body"),  # 9 chars
+                    _delta_line("done"),
+                ]
+            )
+
+        async def wait(self):
+            return 0
+
+    async def fake_exec(*args, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr(provider.asyncio, "create_subprocess_exec", fake_exec)
+
+    events: list[dict] = []
+    monkeypatch.setattr(provider.renderer, "emit", events.append)
+
+    chunks = [
+        c async for c in provider._claude_cli_stream([{"role": "user", "content": "hi"}], "sp")
+    ]
+
+    # Tool lifecycle surfaced as display events, in order, with matching index.
+    starts = [e for e in events if e["type"] == "tool_call_start"]
+    ends = [e for e in events if e["type"] == "tool_call_end"]
+    assert len(starts) == 1 and len(ends) == 1
+    assert starts[0]["name"] == "Read"
+    assert starts[0]["input"] == {"file_path": "src/x.py"}  # full input surfaced
+    assert starts[0]["index"] == ends[0]["index"]
+    assert ends[0]["is_error"] is False
+    assert ends[0]["chars"] == 9
+
+    # The tool is NOT yielded as a tool_calls chunk — only text streams through,
+    # so the agent loop never tries to execute the subprocess's tools itself.
+    assert all(getattr(c.choices[0].delta, "tool_calls", None) is None for c in chunks)
+    text = "".join(c.choices[0].delta.content or "" for c in chunks)
+    assert text == "Looking… done"
 
 
 @pytest.mark.asyncio

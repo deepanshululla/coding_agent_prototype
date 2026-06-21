@@ -20,9 +20,44 @@ uv run main.py "add type hints to all functions in src/tools.py"
 uv run main.py "list all .py files and count the lines in each"
 ```
 
-Swap providers by changing one string (`MODEL` in `src/provider.py`):
-`claude-sonnet-4-5` → Anthropic, `gemini/gemini-2.0-flash` → Google, `gpt-4o` → OpenAI.
-Set the matching API key (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`).
+Swap providers by setting `AGENT_MODEL` in `.env` or using the `--model` flag:
+```bash
+uv run main.py --model gpt-4o "explain the agent loop"                # OpenAI
+uv run main.py --model gemini/gemini-2.0-flash "count Python files"   # Google
+uv run main.py --model ollama/llama3.2 "summarize tools.py"           # Ollama (local)
+```
+
+For Ollama, use the convenient `--ollama` shorthand (adds the `ollama/` prefix):
+```bash
+uv run main.py --ollama llama3.2 "summarize tools.py"         # Same as --model ollama/llama3.2
+uv run main.py --ollama "fix the bug"                         # Uses ollama/llama3.2 by default
+```
+
+Set the matching API key in `.env` (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`).
+For Ollama, no API key is needed — just run `ollama serve` and pull your model first
+(`ollama pull llama3.2`).
+
+### TUI Mode
+
+Launch the full-screen TUI with `AGENT_UI=tui`:
+```bash
+AGENT_UI=tui uv run main.py "start task"           # Uses AGENT_MODEL from .env
+AGENT_UI=tui uv run main.py --model gpt-4o         # Override model for this session
+AGENT_UI=tui uv run main.py --ollama llama3.2      # Use Ollama (adds ollama/ prefix)
+AGENT_UI=tui uv run main.py --ollama               # Use default ollama/llama3.2
+```
+
+**TUI Keybindings:**
+- `i` — enter insert mode (focus input box)
+- `Esc` — return to normal mode
+- `:` — enter command mode
+- `j/k` — scroll down/up (normal mode)
+- `g g` — scroll to top, `G` — scroll to bottom
+- `Ctrl+C` — copy selected text (when transcript focused with selection), or cancel current turn
+- `Ctrl+A` — select all text in transcript (when transcript focused)
+- `Shift+Tab` — cycle permission mode (auto/edit/plan)
+- `Ctrl+V` — paste image from clipboard
+- `Ctrl+Q` — quit
 
 ### Architectures
 

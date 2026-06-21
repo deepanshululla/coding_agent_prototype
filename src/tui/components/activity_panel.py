@@ -89,14 +89,28 @@ class ActivityPanel(Vertical):
     def totals(self) -> Static:
         return self.query_one("#activity-totals", Static)
 
+    # ── Session counters (read by the /usage command) ────────────────────────
+
+    @property
+    def model_calls(self) -> int:
+        return self._model_calls
+
+    @property
+    def tool_calls(self) -> int:
+        return self._tool_calls
+
+    def elapsed_seconds(self) -> int:
+        return int(time.monotonic() - self._start)
+
     # ── Model-call (turn) rows ───────────────────────────────────────────────
 
     def start_turn(self, iteration: int, model: str) -> None:
-        """A model call began (turn_start): add a spinner row for it."""
+        """A model call began (turn_start): add a spinner row naming the model."""
         self._turn_seq += 1
         self._current_key = f"t{self._turn_seq}"
         self._model_calls += 1
-        self.log.add_row("⏳", f"model · turn {iteration}", "", key=self._current_key)
+        label = f"{_short_model(model)} · t{iteration}"
+        self.log.add_row("⏳", label, "", key=self._current_key)
         self._after_append()
 
     def end_turn(self, iteration: int, finish_reason: str, tool_calls_count: int) -> None:
@@ -123,10 +137,22 @@ class ActivityPanel(Vertical):
 
     # ── Tool-call rows ───────────────────────────────────────────────────────
 
-    def add_tool(self, index: int, name: str) -> None:
-        """A tool call began (tool_call_start): add a spinner row under this turn."""
+    def add_tool(self, index: int, name: str, tool_input: dict | None = None) -> None:
+        """A tool call began (tool_call_start): add a spinner row under this turn.
+
+        When the call's input is known, the row names its target too (``Read
+        agent.py``, ``Bash git push``) so the panel says *which* file/command,
+        not just the tool type. The detail is kept short for the narrow column.
+        """
         self._tool_calls += 1
-        self.log.add_row("⏳", name, "", key=self._tool_key(index))
+        label = name
+        if tool_input:
+            from tui.tool_format import format_tool_call
+
+            short = format_tool_call(name, tool_input).short
+            if short:
+                label = f"{name} {short}"
+        self.log.add_row("⏳", label, "", key=self._tool_key(index))
         self._after_append()
 
     def finish_tool(self, index: int, ok: bool, chars: int) -> None:
@@ -168,3 +194,17 @@ class ActivityPanel(Vertical):
 def _short_reason(finish_reason: str) -> str:
     """Compact label for a finish reason to fit the narrow detail column."""
     return {"tool_calls": "tools", "length": "len"}.get(finish_reason, finish_reason)
+
+
+def _short_model(model: str) -> str:
+    """Compact a model id for the narrow label column.
+
+    Drops any provider prefix ("anthropic/claude-…" → "claude-…") and the
+    "claude-" family prefix so the readable variant is what shows, e.g.
+    "anthropic/claude-sonnet-4-5" → "sonnet-4-5". Falls back to "model" for an
+    empty id so the row is never blank.
+    """
+    name = (model or "").rsplit("/", 1)[-1]
+    if name.startswith("claude-"):
+        name = name[len("claude-") :]
+    return name or "model"
