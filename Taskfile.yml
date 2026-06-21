@@ -42,6 +42,107 @@ tasks:
     cmds:
       - uv run main.py {{.CLI_ARGS}}
 
+  tui:ollama:
+    desc: >-
+      Launch the TUI against local Ollama with dual-model routing (ADR-0015):
+      gpt-oss:120b drives reasoning + tool calls, qwen3-coder:30b does the code
+      edits via the write_code tool. Needs `ollama serve` running with both
+      models pulled. The `ollama_chat/` prefix is REQUIRED for tool calling —
+      the `ollama/` prefix routes to /api/generate, which ignores tools and
+      returns empty. Override either with AGENT_MODEL / AGENT_CODE_MODEL (e.g.
+      AGENT_MODEL=ollama_chat/gpt-oss:20b for a faster driver on modest hardware).
+    interactive: true
+    env:
+      AGENT_UI: tui
+      AGENT_MODEL: ollama_chat/gpt-oss:120b
+      AGENT_CODE_MODEL: ollama_chat/qwen3-coder:30b
+      # Force the LiteLLM/Ollama path. Without this, a stray USE_CLAUDE_CLI_LLM=1
+      # in .env would route every turn to `claude -p` and ignore Ollama entirely.
+      # load_dotenv() does not override an already-set var, so this wins.
+      USE_CLAUDE_CLI_LLM: "0"
+    cmds:
+      - uv run main.py {{.CLI_ARGS}}
+
+  eval:ollama:
+    desc: >-
+      Run the tool-calling eval across every chat-capable model in local Ollama
+      and print a comparison matrix (pass rate + tool calls / errors / unknowns).
+      Embedding models are skipped automatically. Add `-- --limit 3` to shorten,
+      or `-- --out runs.jsonl` to persist. Forces the LiteLLM/Ollama path.
+    env:
+      USE_CLAUDE_CLI_LLM: "0"
+      AGENT_MEMORY_ENABLED: "0"
+      AGENT_MAX_ITERATIONS: "15"
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.run toolcall --ollama-all {{.CLI_ARGS}}
+
+  eval:ollama:reasoning:
+    desc: >-
+      Run the reasoning eval (multi-step word/logic problems, graded on the final
+      answer) across every chat-capable local Ollama model. Add `-- --limit 3` to
+      shorten or `-- --out runs.jsonl` to persist.
+    env:
+      USE_CLAUDE_CLI_LLM: "0"
+      AGENT_MEMORY_ENABLED: "0"
+      AGENT_MAX_ITERATIONS: "15"
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.run reasoning --ollama-all {{.CLI_ARGS}}
+
+  eval:ollama:planning:
+    desc: >-
+      Run the planning eval (produce a valid ordered plan under dependency
+      constraints, graded on the answer) across every chat-capable local Ollama
+      model. Tool-less models (gemma3) run via the no-tools fallback.
+    env:
+      USE_CLAUDE_CLI_LLM: "0"
+      AGENT_MEMORY_ENABLED: "0"
+      AGENT_MAX_ITERATIONS: "15"
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.run planning --ollama-all {{.CLI_ARGS}}
+
+  eval:ollama:coding:
+    desc: >-
+      Run the coding eval (standalone functions graded by hidden pytest) across
+      every chat-capable local Ollama model. Set AGENT_CODE_MODEL to also exercise
+      the write_code delegation. Add `-- --limit 3` to shorten.
+    env:
+      USE_CLAUDE_CLI_LLM: "0"
+      AGENT_MEMORY_ENABLED: "0"
+      AGENT_MAX_ITERATIONS: "15"
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.run coding --ollama-all {{.CLI_ARGS}}
+
+  eval:ollama:gsm8k:
+    desc: >-
+      Run GSM8K (1319 grade-school math problems, answer-graded) across every
+      chat-capable local Ollama model. Large N for reliable reasoning comparison;
+      fetched on demand. ALWAYS pass `-- --limit N` (e.g. 20) — the full set is
+      huge.
+    env:
+      USE_CLAUDE_CLI_LLM: "0"
+      AGENT_MEMORY_ENABLED: "0"
+      AGENT_MAX_ITERATIONS: "6"
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.run gsm8k --ollama-all {{.CLI_ARGS}}
+
+  eval:ollama:humaneval:
+    desc: >-
+      Run HumanEval (164 function-completion problems, hidden-pytest graded)
+      across every chat-capable local Ollama model. Standard coding benchmark,
+      fetched on demand. Use `-- --limit N` to subsample.
+    env:
+      USE_CLAUDE_CLI_LLM: "0"
+      AGENT_MEMORY_ENABLED: "0"
+      AGENT_MAX_ITERATIONS: "15"
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.run humaneval --ollama-all {{.CLI_ARGS}}
+
   docs:install:
     desc: Install the documentation site's npm dependencies
     dir: "{{.WEBSITE_DIR}}"

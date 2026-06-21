@@ -24,10 +24,16 @@ dev = [
     "ruff>=0.15.18",
     "ty>=0.0.51",
 ]
+# Heavy, Docker-backed deps used only to GRADE SWE-bench predictions. Kept out of
+# the default install; pull with `uv sync --group evals`.
+evals = [
+    "swebench>=3.0.0",
+]
 
 [tool.pytest.ini_options]
 # src/ is not a package (no __init__.py); put it on the path for imports.
-pythonpath = ["src"]
+# "." puts the repo root on the path so the top-level evals/ package imports.
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [

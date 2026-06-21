@@ -74,6 +74,7 @@ walkthrough.
 8. **[Operations](./operations/security.md)** — security, [command allowlist](./operations/command-allowlist.md), settings, permissions.
 9. **[Programmatic Usage](./programmatic-usage/sdk.md)** — embed the agent, RPC, JSON event stream.
 10. **[Guides](./guides/swapping-providers.md)**, **[Advanced](./advanced/steering.md)**, **[Reference](./reference/agent.md)**, and **[Contributing](./contributing/development-workflow.md)**.
+11. **[Research Landscape](./research-landscape.md)** — where this project sits in the 2026 coding-agent research, which of its seams form a controlled-experiment rig, and where the publishable gaps are.
 
 :::note Implementation status
 The core is **implemented and tested**: `src/types_.py`, `src/tools.py` (all 7 tools),

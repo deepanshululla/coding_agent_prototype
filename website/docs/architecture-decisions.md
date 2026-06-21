@@ -35,6 +35,7 @@ Each ADR has a **status**:
 | [ADR-0012](#adr-0012--merge-mcp-tools-into-the-same-registry) | Merge MCP tools into the same registry | Accepted |
 | [ADR-0013](#adr-0013--command-allowlist-is-default-deny) | Command allowlist is default-deny | Accepted |
 | [ADR-0014](#adr-0014--defer-the-http-serving-layer-fastapi--granian) | Defer the HTTP serving layer (FastAPI + Granian) | Deferred |
+| [ADR-0015](#adr-0015--one-model-per-loop-defer-dual-model-role-routing) | One model per loop; defer dual-model role routing | Deferred |
 
 ---
 
@@ -381,6 +382,65 @@ cross-process callers manage a subprocess instead of hitting a URL.
   core, HTTP/2, single binary).
 - **Raw ASGI / RSGI, no framework** — rejected; hand-rolls routing/validation for no gain over
   stdio (simpler) or FastAPI (richer).
+
+---
+
+## ADR-0015 — One model per loop; defer dual-model role routing
+
+**Status:** Deferred (2026-06-21) · recommend the **delegation-tool** design when a true
+reasoning/coding split is genuinely wanted; ship a single-model Ollama task now.
+
+### Context
+
+Running locally against [Ollama](https://ollama.com) raises a tempting idea: pair a strong
+*reasoning / tool-calling* model (e.g. `gpt-oss:120b`) with a specialized *coding* model (e.g.
+`qwen3-coder:30b`), each doing what it is best at. But the loop is built around **one** `model`
+threaded end to end — `config.MODEL` → `run_agent(model=…)` → `stream_turn` →
+`provider.stream_response` (see [ADR-0002](#adr-0002--one-litellm-call-instead-of-per-provider-adapters)
+and the [Provider Layer](./architecture/provider-layer.md)). A single turn reasons, calls tools,
+*and* edits code with that one model, so "use model X for coding, model Y for everything else" is
+not a config toggle — it needs a routing seam. The question is which seam, and whether the split
+earns its complexity.
+
+### Decision
+
+**Keep one model per loop as the default**, and add a single-model `task tui:ollama` entry pointed
+at one Ollama model (a one-string change, [ADR-0010](#adr-0010--configuration-via-agent_-env-vars-fail-closed)).
+**Defer** dual-model role routing until it is genuinely wanted, and when it is, prefer the
+**delegation-tool** design: the reasoning model drives the loop and a new `write_code` tool hands a
+focused instruction to a `qwen3-coder` sub-agent that performs the edits. It is the only option
+where "coding" is a *crisp* boundary (the tool call) rather than a heuristic, and it reuses the
+existing tool registry and the sub-agent spawn pattern already in
+`src/architectures/orchestrator_worker.py`.
+
+### Consequences
+
+**Positive:** the loop stays single-model and easy to follow; local Ollama users get a working
+`tui:ollama` immediately with zero new abstractions; the eventual dual-model path is low-regret
+because the delegation tool slots into the existing registry without touching the core loop.
+**Deferred cost:** until built, one local model does both reasoning and coding, so you can't pair a
+big reasoner with a small specialist; the delegation design, when added, costs a tool, sub-agent
+wiring, and prompt guidance so the driver delegates instead of editing directly.
+
+### Alternatives considered
+
+- **Delegation tool** (recommended when pursued) — driver = `gpt-oss:120b`; a `write_code` tool runs
+  a `qwen3-coder:30b` sub-agent with read/edit/write tools. *Pros:* truest to intent, each model
+  plays to its strength, the coder gets fresh focused context, the split is crisp. *Cons:* most new
+  code; two-hop latency; the driver sees only the coder's result; depends on the driver choosing to
+  delegate.
+- **Per-turn router** — pick the model each turn (coder when the turn will edit, reasoner otherwise).
+  *Pros:* no new tool, one loop preserved. *Cons:* you can't know a turn will edit code before the
+  model responds, so routing is a fragile heuristic; real turns mix reasoning *and* edits, making the
+  split artificial; swapping models mid-context mixes two styles. Rejected as imprecise.
+- **Orchestrator-worker, per-role models** — orchestrator (decompose/synthesize) on `gpt-oss`,
+  workers on `qwen3-coder`, reusing the existing architecture
+  ([Plugin Architecture](./architecture-patterns/plugin-architecture.md)). *Pros:* least new code.
+  *Cons:* workers still reason and call tools, so it isn't a pure coding model and doesn't match the
+  mental model; decompose/synthesize overhead on every task. The cheap fallback if a new tool is
+  unwanted.
+- **Single model only** — `tui:ollama` on one model. *Pros:* trivial, ships now. *Cons:* no split at
+  all. Chosen as the immediate step, not the end state.
 
 ---
 

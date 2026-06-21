@@ -11,7 +11,7 @@ from typing import Any
 import litellm
 
 import renderer
-from config import MAX_TOKENS, MODEL, THINKING_BUDGET
+from config import MAX_TOKENS, MODEL, THINKING_BUDGET, VLM_MODEL
 from tools import TOOLS_SCHEMA
 
 # Extended thinking (Phase 17) is only supported by some Claude models. We gate
@@ -114,6 +114,96 @@ def _tc(index, id=None, name=None, arguments=None):
     return SimpleNamespace(index=index, id=id, function=function)
 
 
+def _parse_image_payload(content: object) -> tuple[str, str] | None:
+    """Return (format, base64) if `content` is a read_file image result, else None.
+
+    `read_file` returns images as the JSON string
+    {"type":"image","format":"png","data":"<base64>"} (tools.py). A normal text
+    tool result is left alone by the cheap substring guard before we json.loads,
+    so this is effectively free on the common (text) path.
+    """
+    if not isinstance(content, str) or '"image"' not in content:
+        return None
+    try:
+        obj = json.loads(content)
+    except (ValueError, TypeError):
+        return None
+    if (
+        isinstance(obj, dict)
+        and obj.get("type") == "image"
+        and obj.get("format")
+        and obj.get("data")
+    ):
+        return obj["format"], obj["data"]
+    return None
+
+
+def _lift_tool_image_results(messages: list[dict]) -> list[dict]:
+    """Lift image tool-results into a real multimodal `user` message.
+
+    A `role:"tool"` message is plain text to every provider, so the base64 an
+    image read returns is invisible to the model. We replace that base64 with a
+    short text placeholder and re-attach the image as an `image_url` block on a
+    `user` message that follows the tool batch — the provider-agnostic shape
+    (OpenAI/Anthropic/Ollama all accept image_url in user content).
+
+    All images from one contiguous tool batch are collected into a single trailing
+    user message so the tool_result grouping providers require (every result for
+    an assistant's tool_use before the next user turn) is preserved. Non-image
+    tool results and the input list itself are untouched (a fresh list is built).
+    """
+    out: list[dict] = []
+    pending: list[dict] = []
+
+    def _flush() -> None:
+        if pending:
+            out.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Image(s) read by the read_file tool:"},
+                        *pending,
+                    ],
+                }
+            )
+            pending.clear()
+
+    for msg in messages:
+        if msg.get("role") == "tool":
+            img = _parse_image_payload(msg.get("content"))
+            if img is not None:
+                fmt, data = img
+                placeholder = f"[image read ({fmt}); attached in the next message]"
+                out.append({**msg, "content": placeholder})
+                pending.append(
+                    {"type": "image_url", "image_url": {"url": f"data:image/{fmt};base64,{data}"}}
+                )
+                continue
+        else:
+            # A non-tool message closes the current tool batch; flush its images
+            # first so they land right after the batch and before this message.
+            _flush()
+        out.append(msg)
+
+    _flush()
+    return out
+
+
+def _contains_image(messages: list[dict]) -> bool:
+    """True if any message carries a multimodal image_url block.
+
+    Used to decide vision routing. Run on the lifted messages so it catches both
+    pasted user images and images lifted out of tool results.
+    """
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list) and any(
+            isinstance(b, dict) and b.get("type") == "image_url" for b in content
+        ):
+            return True
+    return False
+
+
 async def stream_response(
     messages: list[dict], system_prompt: str, model: str | None = None
 ) -> AsyncIterator[Any]:
@@ -134,26 +224,42 @@ async def stream_response(
     skipped entirely and the turn is served by `claude -p` via _claude_cli_stream
     — a text-only fork that still yields the same OpenAI-format chunk shape.
     """
-    effective_model = model or MODEL
+    # Lift image tool-results into real multimodal user messages so the model can
+    # see them (a tool result is text-only on the wire), then route the turn: a
+    # turn carrying an image goes to VLM_MODEL when configured, otherwise to the
+    # caller's model (or the default MODEL). Text turns are unchanged.
+    lifted = _lift_tool_image_results(messages)
+    if VLM_MODEL and _contains_image(lifted):
+        effective_model = VLM_MODEL
+    else:
+        effective_model = model or MODEL
 
     if USE_CLAUDE_CLI:
-        async for chunk in _claude_cli_stream(messages, system_prompt, effective_model):
+        async for chunk in _claude_cli_stream(lifted, system_prompt, effective_model):
             yield chunk
         return
 
-    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    full_messages = [{"role": "system", "content": system_prompt}] + lifted
     # _thinking_kwargs carries max_tokens (and, when extended thinking is on and
     # the model supports it, the `thinking` param with a bumped max_tokens).
-    response = await litellm.acompletion(
+    base_kwargs = dict(
         model=effective_model,
         messages=full_messages,
-        tools=TOOLS_SCHEMA,
-        tool_choice="auto",
         stream=True,
         # Ask for token usage on the final streamed chunk so /usage can report it.
         stream_options={"include_usage": True},
         **_thinking_kwargs(effective_model),
     )
+    try:
+        response = await litellm.acompletion(**base_kwargs, tools=TOOLS_SCHEMA, tool_choice="auto")
+    except Exception as err:
+        # Some backends reject any request carrying a `tools` array — notably
+        # several Ollama models (gemma3, tinyllama) whose templates lack tool
+        # support. Retry once without tools so the model can still answer (e.g.
+        # the reasoning suite); any other failure propagates unchanged.
+        if "does not support tools" not in str(err).lower():
+            raise
+        response = await litellm.acompletion(**base_kwargs)
     async for chunk in response:
         yield chunk
 

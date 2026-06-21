@@ -40,6 +40,23 @@ def _bool(name: str, default: bool) -> bool:
 MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-5")
 MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
 
+# Dual-model role routing (ADR-0015). When set, MODEL drives the reasoning /
+# tool-calling loop while CODE_MODEL does the actual code edits, reached through
+# the `write_code` tool which spawns a focused sub-agent on this model. Empty
+# (the default) disables delegation entirely — `write_code` is not exposed and
+# behaviour is identical to a single-model run. Pairs well with local Ollama,
+# e.g. AGENT_MODEL=ollama/gpt-oss:120b + AGENT_CODE_MODEL=ollama/qwen3-coder:30b.
+CODE_MODEL = os.environ.get("AGENT_CODE_MODEL", "")
+
+# Vision role routing. When set, any turn that carries an image — a pasted
+# user image or an image read by the `read_file` tool — is routed to this
+# vision-language model instead of MODEL, while MODEL keeps driving every
+# text-only turn. Empty (the default) disables routing: images go to MODEL
+# unchanged, so a single vision-capable MODEL still works. Lets a text/tool
+# model (e.g. qwen3-coder, gpt-oss) drive the loop while a VLM handles images,
+# e.g. AGENT_MODEL=ollama/qwen3-coder:30b + AGENT_VLM_MODEL=ollama/qwen3-vl:30b.
+VLM_MODEL = os.environ.get("AGENT_VLM_MODEL", "")
+
 # ── Architecture ──────────────────────────────────────────────────────────────
 # The agent control-flow strategy (see architecture.py). Overridable per-run via
 # the --architecture CLI flag; unknown names fall back to "reactive".

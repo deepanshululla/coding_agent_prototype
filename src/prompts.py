@@ -19,9 +19,30 @@ def build_system_prompt(
     extra: str = "",
     skills: list[str] | None = None,
     load_memories: bool = True,
+    delegate_coding: bool | None = None,
 ) -> str:
     cwd = cwd or os.getcwd()
     today = date.today().isoformat()
+
+    # Dual-model delegation (ADR-0015): when a code model is configured, advertise
+    # the write_code tool and nudge the driver to hand coding off to it. None
+    # auto-resolves from config so the main agent picks it up without a caller
+    # change; the coding sub-agent passes False explicitly (it IS the coder).
+    if delegate_coding is None:
+        delegate_coding = bool(config.CODE_MODEL)
+    write_code_line = (
+        "- write_code: Delegate a concrete code change to the specialized coding model\n"
+        if delegate_coding
+        else ""
+    )
+    delegation_guideline = (
+        "- A specialized coding model is available via write_code. For any "
+        "non-trivial code writing or editing, gather the needed context "
+        "(read_file/grep) and then call write_code with a clear, self-contained "
+        "instruction rather than editing files yourself.\n"
+        if delegate_coding
+        else ""
+    )
 
     # Resolve the active skill set: an explicit list (e.g. from the --skills
     # flag) overrides the env-driven ACTIVE_SKILLS default. An empty list means
@@ -76,13 +97,13 @@ You help users by reading files, executing shell commands, editing code, and wri
 - load_skill: Load the full instructions of a skill listed in the skills menu
 - save_memory: Save a memory to persist information across conversations
 - list_memories: List all saved memories for this project
-{skill_blocks}
+{write_code_line}{skill_blocks}
 
 {menu}
 
 ## Guidelines
 - Start by understanding the task. Use read_file or list_dir to explore before making changes.
-- Prefer targeted edits (edit_file) over full rewrites (write_file) for existing files.
+{delegation_guideline}- Prefer edits (edit_file) over rewrites (write_file) for existing files.
 - Always verify changes with bash (e.g., run tests, check syntax) after editing.
 - When a tool returns an error, reason about it and try an alternative approach.
 - Be concise in your text responses. Let the tools do the work.

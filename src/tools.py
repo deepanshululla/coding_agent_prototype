@@ -16,11 +16,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextvars
 import json
 import os
 import subprocess
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+
+# config is imported as a module (not `from config import …`) for values read at
+# call time — CODE_MODEL can be flipped per-run, so write_code consults it live.
+import config
 
 # Caps that keep tool output from blowing the context window. Resolved values
 # (defaults + AGENT_* overrides) live in config.py — the single source of truth.
@@ -345,9 +350,85 @@ async def list_memories() -> str:
     return await asyncio.to_thread(_list)
 
 
+# ── write_code (dual-model delegation, ADR-0015) ──────────────────────────────
+
+# True while a write_code sub-agent is running, so a nested write_code call (the
+# coding model trying to delegate to itself) is refused instead of recursing.
+# A ContextVar, not a plain flag, so the value propagates into the gathered tool
+# tasks of the sub-agent's own loop (asyncio.gather copies the current context).
+_in_write_code: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_in_write_code", default=False
+)
+
+# Focused brief for the coding sub-agent. It is the specialist that actually
+# edits files, so it gets no delegation nudge of its own (delegate_coding=False)
+# — just a clear "implement, verify, summarize" loop.
+_CODE_AGENT_BRIEF = (
+    "You are a focused coding specialist. A reasoning agent has delegated a "
+    "concrete code change to you. Implement it directly: read the relevant "
+    "files, make targeted edits (prefer edit_file over rewrites), and verify "
+    "with bash where reasonable. Do not ask questions — make your best change. "
+    "End with a 1-3 sentence summary naming the files you changed and what you "
+    "did, so the calling agent can continue."
+)
+
+
+def _final_assistant_text(history: list[dict]) -> str:
+    """The sub-agent's answer: last assistant message with plain-string content."""
+    for message in reversed(history):
+        if message.get("role") == "assistant" and isinstance(message.get("content"), str):
+            return message["content"]
+    return ""
+
+
+async def write_code(instruction: str, context: str = "") -> str:
+    """Delegate a concrete coding change to the specialized code model.
+
+    Runs a focused reactive sub-agent on ``config.CODE_MODEL`` (read live) with
+    the full file-editing toolset, and returns its summary of what it changed.
+    This is the seam that lets a strong reasoning/tool model drive the loop while
+    a coding-specialist model does the edits (ADR-0015).
+
+    ``instruction`` is the self-contained change to make; ``context`` is optional
+    background (relevant files, constraints) folded into the sub-task. Returns an
+    error string (never raises) when delegation is disabled or nested.
+    """
+    if not config.CODE_MODEL:
+        return (
+            "Error: write_code is unavailable because AGENT_CODE_MODEL is not set. "
+            "Make the edit yourself with edit_file / write_file."
+        )
+    if _in_write_code.get():
+        return (
+            "Error: write_code cannot be nested. You are the coding model — "
+            "use read_file / edit_file / write_file / bash directly."
+        )
+
+    token = _in_write_code.set(True)
+    try:
+        # Lazy imports: agent imports tools at module load, so importing it at the
+        # top would be circular; prompts is cheap but kept lazy for symmetry.
+        from agent import run_agent
+        from prompts import build_system_prompt
+
+        sub_task = instruction if not context else f"{instruction}\n\nContext:\n{context}"
+        system_prompt = build_system_prompt(extra=_CODE_AGENT_BRIEF, delegate_coding=False)
+        history = await run_agent(
+            sub_task,
+            system_prompt=system_prompt,
+            model=config.CODE_MODEL,
+            architecture="reactive",  # the coder is a plain loop, not nested orchestration
+        )
+        return _final_assistant_text(history) or "(coding sub-agent finished with no summary)"
+    except Exception as e:  # never raise out of a tool
+        return f"Error in write_code sub-agent: {e}"
+    finally:
+        _in_write_code.reset(token)
+
+
 # ── schemas + registry ───────────────────────────────────────────────────────
 
-TOOLS_SCHEMA: list[dict] = [
+_BASE_TOOLS_SCHEMA: list[dict] = [
     {
         "type": "function",
         "function": {
@@ -554,9 +635,58 @@ TOOLS_SCHEMA: list[dict] = [
     },
 ]
 
+# Only advertised when a code model is configured (ADR-0015). Kept out of the
+# base list so a single-model run sees exactly the tools it always had.
+WRITE_CODE_SCHEMA: dict = {
+    "type": "function",
+    "function": {
+        "name": "write_code",
+        "description": (
+            "Delegate a concrete code change to the specialized coding model. "
+            "Prefer this over editing files yourself: describe the change you "
+            "want in a clear, self-contained instruction and a coding-specialist "
+            "sub-agent will read the files, make the edits, and report back what "
+            "it changed. Use read_file/grep yourself first to gather the context "
+            "the instruction needs."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "instruction": {
+                    "type": "string",
+                    "description": "The self-contained code change to make.",
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Optional background: relevant files, constraints, findings.",
+                    "default": "",
+                },
+            },
+            "required": ["instruction"],
+        },
+    },
+}
+
+
+def build_tools_schema(code_model: str | None) -> list[dict]:
+    """The tool schema sent to the model, gated on dual-model delegation.
+
+    Appends ``write_code`` only when ``code_model`` is set, so a single-model run
+    is byte-for-byte the schema it has always been. Pure function of its argument
+    so it is unit-testable without reloading the module under a patched env.
+    """
+    if code_model:
+        return [*_BASE_TOOLS_SCHEMA, WRITE_CODE_SCHEMA]
+    return list(_BASE_TOOLS_SCHEMA)
+
+
+# Resolved once at import from the configured CODE_MODEL (env is set before
+# import on the real path). The provider sends this to the model as `tools=`.
+TOOLS_SCHEMA: list[dict] = build_tools_schema(config.CODE_MODEL)
+
 # Name → coroutine. The MCP client (Layer 13.5) injects extra entries at runtime
 # keyed by dynamic names, so the value type is the broad "any async tool callable"
-# rather than the union of the eight built-ins' exact signatures.
+# rather than the union of the built-ins' exact signatures.
 TOOL_REGISTRY: dict[str, Callable[..., Awaitable[str]]] = {
     "read_file": read_file,
     "write_file": write_file,
@@ -569,3 +699,10 @@ TOOL_REGISTRY: dict[str, Callable[..., Awaitable[str]]] = {
     "save_memory": save_memory,
     "list_memories": list_memories,
 }
+
+# write_code is registered only when a code model is configured — gated in lockstep
+# with the schema above so every advertised tool has an implementation and vice
+# versa (the registry == schema invariant). It self-guards on CODE_MODEL too, so a
+# stale call after the env flips is still answered with a clear error, not a crash.
+if config.CODE_MODEL:
+    TOOL_REGISTRY["write_code"] = write_code

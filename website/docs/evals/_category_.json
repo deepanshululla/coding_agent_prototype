@@ -1,0 +1,9 @@
+{
+  "label": "Evaluation",
+  "position": 8.5,
+  "link": {
+    "type": "generated-index",
+    "title": "Evaluation",
+    "description": "Measure the agent on coding benchmarks: an in-repo harness that runs the agent on task suites and grades the result, plus the built-in suites — a smoke gate, the Aider polyglot benchmark, and a SWE-bench Lite slice."
+  }
+}

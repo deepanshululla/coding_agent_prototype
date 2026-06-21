@@ -49,6 +49,50 @@ async def test_stream_response_default_model(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_response_retries_without_tools_when_backend_rejects_them(monkeypatch):
+    """Some backends (e.g. Ollama's gemma3, tinyllama) reject any request that
+    carries a `tools` array. stream_response must catch that specific error and
+    retry the same call WITHOUT tools/tool_choice, so a tool-less model can still
+    answer (reasoning tasks) instead of failing every turn."""
+    monkeypatch.setattr(provider, "USE_CLAUDE_CLI", False)
+    calls = []
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        if "tools" in kwargs:
+            raise RuntimeError(
+                'Ollama_chatException - {"error":"registry.ollama.ai/library/'
+                'gemma3:27b does not support tools"}'
+            )
+        return _fake_acompletion_stream()
+
+    monkeypatch.setattr(provider.litellm, "acompletion", fake_acompletion)
+
+    chunks = [c async for c in provider.stream_response([{"role": "user", "content": "x"}], "sp")]
+
+    # First attempt carried tools and failed; the retry dropped tools/tool_choice.
+    assert len(calls) == 2
+    assert "tools" in calls[0]
+    assert "tools" not in calls[1] and "tool_choice" not in calls[1]
+    assert chunks  # the retry's stream was yielded
+
+
+@pytest.mark.asyncio
+async def test_stream_response_reraises_unrelated_errors(monkeypatch):
+    """A non-tools error is not swallowed by the no-tools fallback — it propagates."""
+    monkeypatch.setattr(provider, "USE_CLAUDE_CLI", False)
+
+    async def fake_acompletion(**kwargs):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(provider.litellm, "acompletion", fake_acompletion)
+
+    with pytest.raises(RuntimeError, match="connection refused"):
+        async for _ in provider.stream_response([{"role": "user", "content": "x"}], "sp"):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_stream_response_model_override(monkeypatch):
     """An explicit model= overrides provider.MODEL on the litellm call.
 
