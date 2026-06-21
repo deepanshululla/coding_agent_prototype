@@ -15,6 +15,8 @@ the event loop while other tools run concurrently.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import os
 import subprocess
 from collections.abc import Awaitable, Callable
@@ -23,6 +25,9 @@ from pathlib import Path
 # Caps that keep tool output from blowing the context window. Resolved values
 # (defaults + AGENT_* overrides) live in config.py — the single source of truth.
 from config import BASH_OUTPUT_LIMIT, BASH_TIMEOUT, FIND_LIMIT, READ_LIMIT
+
+# Image file extensions that trigger base64 encoding instead of text read
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg"}
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -35,17 +40,48 @@ def _truncate(text: str, limit: int) -> str:
 
 
 async def read_file(path: str, offset: int = 0, limit: int = READ_LIMIT) -> str:
-    """Read a file, optionally a window of ``limit`` lines starting at ``offset``."""
+    """Read a file, optionally a window of ``limit`` lines starting at ``offset``.
+
+    Image files (detected by extension) are returned as a JSON string containing
+    base64-encoded data: {"type": "image", "format": "png", "data": "base64..."}.
+    Text files are returned as plain text.
+    """
 
     def _read() -> str:
+        p = Path(path)
+
+        # Check if file exists first
         try:
-            lines = Path(path).read_text().splitlines()
+            if not p.exists():
+                return f"Error: file not found: {path}"
+            if p.is_dir():
+                return f"Error: {path} is a directory, not a file"
+        except Exception as e:  # pragma: no cover - defensive
+            return f"Error checking {path}: {e}"
+
+        # Image files: return base64-encoded JSON
+        if p.suffix.lower() in IMAGE_EXTENSIONS:
+            try:
+                img_bytes = p.read_bytes()
+                b64_data = base64.b64encode(img_bytes).decode("ascii")
+                # Strip the leading dot from suffix for format field
+                fmt = p.suffix.lower()[1:]  # .png -> png
+                return json.dumps(
+                    {"type": "image", "format": fmt, "data": b64_data}, separators=(",", ":")
+                )
+            except Exception as e:
+                return f"Error reading image {path}: {e}"
+
+        # Text files: return plain text (original behavior)
+        try:
+            lines = p.read_text().splitlines()
         except FileNotFoundError:
             return f"Error: file not found: {path}"
         except IsADirectoryError:
             return f"Error: {path} is a directory, not a file"
-        except Exception as e:  # pragma: no cover - defensive
+        except Exception as e:
             return f"Error reading {path}: {e}"
+
         window = lines[offset : offset + limit]
         return "\n".join(window)
 
@@ -316,19 +352,23 @@ TOOLS_SCHEMA: list[dict] = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read the contents of a file. Use offset/limit for large files.",
+            "description": (
+                "Read the contents of a file. Image files (.png, .jpg, .jpeg, .gif, .webp, etc.) "
+                "are returned as JSON with base64-encoded data. Text files return plain text. "
+                "Use offset/limit for large text files."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "File path to read"},
                     "offset": {
                         "type": "integer",
-                        "description": "Line to start from (0-indexed)",
+                        "description": "Line to start from (0-indexed, text files only)",
                         "default": 0,
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Max lines to return",
+                        "description": "Max lines to return (text files only)",
                         "default": 2000,
                     },
                 },

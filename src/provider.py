@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -148,6 +149,90 @@ async def stream_response(
     )
     async for chunk in response:
         yield chunk
+
+
+def _save_images_to_temp(
+    content: object, temp_dir: Path | None = None
+) -> tuple[list[dict], list[Path]]:
+    """Extract images from content and save them to temp files.
+
+    For multimodal content with image_url blocks, this extracts the base64 data,
+    saves it to temp files, and replaces image blocks with text references to
+    those file paths. This allows `claude -p` to read the images via its file
+    reading capability instead of trying to pass base64 in the prompt.
+
+    Returns:
+        (modified_content, temp_files): Content with image blocks replaced by
+        text references, and a list of temporary file paths to clean up later.
+    """
+    import base64
+    import tempfile
+
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}], []
+    if not isinstance(content, list):
+        return [{"type": "text", "text": str(content)}], []
+
+    result: list[dict] = []
+    temp_files: list[Path] = []
+
+    for block in content:
+        if not isinstance(block, dict):
+            result.append({"type": "text", "text": str(block)})
+            continue
+
+        if block.get("type") == "text":
+            result.append(block)
+        elif block.get("type") == "image_url":
+            # Extract base64 data from data URL
+            image_url = block.get("image_url")
+            raw_url = image_url.get("url", "") if isinstance(image_url, dict) else ""
+            url = raw_url if isinstance(raw_url, str) else ""
+            if url.startswith("data:"):
+                # Parse data URL: data:image/png;base64,<data>
+                try:
+                    parts = url.split(",", 1)
+                    if len(parts) == 2:
+                        header, data = parts
+                        # Determine file extension from mime type
+                        ext = ".png"  # default
+                        if "image/jpeg" in header or "image/jpg" in header:
+                            ext = ".jpg"
+                        elif "image/gif" in header:
+                            ext = ".gif"
+                        elif "image/webp" in header:
+                            ext = ".webp"
+
+                        # Decode and save to temp file
+                        img_data = base64.b64decode(data)
+
+                        if temp_dir:
+                            # Use provided directory
+                            temp_file = temp_dir / f"image_{len(temp_files)}{ext}"
+                            temp_file.write_bytes(img_data)
+                        else:
+                            # Create temp file
+                            fd, temp_path = tempfile.mkstemp(suffix=ext, prefix="claude_img_")
+                            import os
+
+                            os.write(fd, img_data)
+                            os.close(fd)
+                            temp_file = Path(temp_path)
+
+                        temp_files.append(temp_file)
+
+                        # Replace with text reference
+                        result.append({"type": "text", "text": f"[Image file: {temp_file}]"})
+                except Exception:
+                    # If parsing fails, fall back to text placeholder
+                    result.append({"type": "text", "text": "[image - failed to extract]"})
+            else:
+                # Non-data URL, keep as text placeholder
+                result.append({"type": "text", "text": f"[image: {url}]"})
+        else:
+            result.append(block)
+
+    return result, temp_files
 
 
 def _flatten_content(content: object) -> str:
@@ -315,76 +400,98 @@ async def _claude_cli_stream(
     never fed back into the agent loop (which would wrongly re-dispatch them).
     Each tool_use id is assigned a monotonic index so the panel keys distinct
     rows even across the multiple assistant messages in one subprocess run.
+
+    Images (Phase N): Multimodal messages with inline base64 image data are
+    preprocessed — images are saved to temp files and referenced by path in the
+    prompt so `claude -p` can read them via its file reading capability. Temp
+    files are cleaned up when streaming completes.
     """
-    prompt = _messages_to_prompt(system_prompt, messages)
-    cmd = [
-        "claude",
-        "-p",
-        prompt,
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--include-partial-messages",
-        "--permission-mode",
-        CLI_PERMISSION_MODE,
-    ]
-    if model:
-        cmd += ["--model", model]
+    # Extract images from messages and save to temp files
+    temp_files: list[Path] = []
+    processed_messages = []
+    for msg in messages:
+        content = msg.get("content", "")
+        modified_content, msg_temp_files = _save_images_to_temp(content)
+        temp_files.extend(msg_temp_files)
+        processed_messages.append({**msg, "content": modified_content})
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        prompt = _messages_to_prompt(system_prompt, processed_messages)
+        cmd = [
+            "claude",
+            "-p",
+            prompt,
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--include-partial-messages",
+            "--permission-mode",
+            CLI_PERMISSION_MODE,
+        ]
+        if model:
+            cmd += ["--model", model]
 
-    # stdout is typed Optional, but PIPE above guarantees a reader here.
-    assert proc.stdout is not None
-    # Map each tool_use id to a monotonic display index so the activity panel
-    # keys distinct rows (block indices reset per assistant message and would
-    # otherwise collide across a multi-step subprocess run).
-    id_to_index: dict[str, int] = {}
-    next_index = 0
-    final_usage: dict | None = None
-    while True:
-        line = await proc.stdout.readline()
-        if not line:
-            break
-        for descriptor in _parse_stream_json_line(line):
-            kind = descriptor["kind"]
-            if kind == "usage":
-                final_usage = {
-                    "prompt_tokens": descriptor["prompt_tokens"],
-                    "completion_tokens": descriptor["completion_tokens"],
-                }
-            elif kind == "text":
-                yield _chunk(content=descriptor["text"])
-            elif kind == "tool_start":
-                id_to_index[descriptor["id"]] = next_index
-                renderer.emit(
-                    {
-                        "type": "tool_call_start",
-                        "index": next_index,
-                        "tool_call_id": descriptor["id"],
-                        "name": descriptor["name"],
-                        "input": descriptor.get("input") or {},
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        # stdout is typed Optional, but PIPE above guarantees a reader here.
+        assert proc.stdout is not None
+        # Map each tool_use id to a monotonic display index so the activity panel
+        # keys distinct rows (block indices reset per assistant message and would
+        # otherwise collide across a multi-step subprocess run).
+        id_to_index: dict[str, int] = {}
+        next_index = 0
+        final_usage: dict | None = None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            for descriptor in _parse_stream_json_line(line):
+                kind = descriptor["kind"]
+                if kind == "usage":
+                    final_usage = {
+                        "prompt_tokens": descriptor["prompt_tokens"],
+                        "completion_tokens": descriptor["completion_tokens"],
                     }
-                )
-                next_index += 1
-            elif kind == "tool_end":
-                index = id_to_index.get(descriptor["id"])
-                if index is None:
-                    continue  # a result with no matching start — nothing to resolve
-                renderer.emit(
-                    {
-                        "type": "tool_call_end",
-                        "index": index,
-                        "tool_call_id": descriptor["id"],
-                        "is_error": descriptor["is_error"],
-                        "chars": descriptor["chars"],
-                    }
-                )
+                elif kind == "text":
+                    yield _chunk(content=descriptor["text"])
+                elif kind == "tool_start":
+                    id_to_index[descriptor["id"]] = next_index
+                    renderer.emit(
+                        {
+                            "type": "tool_call_start",
+                            "index": next_index,
+                            "tool_call_id": descriptor["id"],
+                            "name": descriptor["name"],
+                            "input": descriptor.get("input") or {},
+                        }
+                    )
+                    next_index += 1
+                elif kind == "tool_end":
+                    index = id_to_index.get(descriptor["id"])
+                    if index is None:
+                        continue  # a result with no matching start — nothing to resolve
+                    renderer.emit(
+                        {
+                            "type": "tool_call_end",
+                            "index": index,
+                            "tool_call_id": descriptor["id"],
+                            "is_error": descriptor["is_error"],
+                            "chars": descriptor["chars"],
+                        }
+                    )
 
-    await proc.wait()
-    # Close the turn so the loop's finish_reason check fires (no tool calls),
-    # carrying the run's token usage when the result event reported it.
-    yield _chunk(finish_reason="stop", usage=final_usage)
+        await proc.wait()
+        # Close the turn so the loop's finish_reason check fires (no tool calls),
+        # carrying the run's token usage when the result event reported it.
+        yield _chunk(finish_reason="stop", usage=final_usage)
+    finally:
+        # Clean up temp image files
+        for temp_file in temp_files:
+            try:
+                temp_file.unlink()
+            except Exception:
+                pass  # Best effort cleanup

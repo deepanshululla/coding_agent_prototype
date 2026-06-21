@@ -56,8 +56,30 @@ AGENT_UI=tui uv run main.py --ollama               # Use default ollama/llama3.2
 - `Ctrl+C` — copy selected text (when transcript focused with selection), or cancel current turn
 - `Ctrl+A` — select all text in transcript (when transcript focused)
 - `Shift+Tab` — cycle permission mode (auto/edit/plan)
-- `Ctrl+V` — paste image from clipboard
+- `Ctrl+V` — paste image from clipboard (multimodal models can analyze pasted screenshots)
 - `Ctrl+Q` — quit
+
+**TUI Slash Commands:**
+Type these in insert mode (prefixed with `/`) to run local commands without sending to the agent:
+- `/help` — list all available commands
+- `/model` — show current model, or `/model <name>` to switch
+- `/skill` — list installed skills, or `/skill <name>` to load one
+- `/usage` — show session stats (model/tool calls, elapsed time, tokens)
+
+**Autocomplete:**
+When typing a slash command, press `Tab` to cycle through matching commands:
+- Type `/` and press `Tab` to cycle through all commands
+- Type `/mo` and press `Tab` to complete to `/model`
+- Press `Shift+Tab` to cycle backward through completions
+
+**Image Support:
+The agent can work with images in two ways:
+- **Paste from clipboard**: Use `Ctrl+V` in TUI mode to attach an image to your next message. Pasted images are displayed inline in the transcript with metadata (format and size).
+- **Read image files**: The `read_file` tool automatically detects image extensions (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, etc.) and returns base64-encoded data
+
+Both methods send images to multimodal models (Claude, GPT-4V, Gemini Vision) for analysis. In TUI mode, images are shown as styled placeholders with format and size information.
+
+When using `USE_CLAUDE_CLI_LLM=1` mode (routing through `claude -p` subprocess), pasted images are automatically saved to temporary files and referenced by path in the prompt, allowing the CLI fork to read them via its file reading capability. Temp files are cleaned up after each turn.
 
 ### Architectures
 
@@ -83,6 +105,7 @@ it with `@register("name")` in `src/architectures/`.
 src/
   types_.py    # ToolCall, ToolResult, Message dataclasses (types_ avoids shadowing stdlib)
   tools.py     # 7 tools: read/write/edit_file, bash, grep, find_files, list_dir
+               # (read_file auto-detects images and returns base64 JSON)
   prompts.py   # build_system_prompt(cwd, extra) — dynamic CWD + date + tool list
   provider.py  # stream_response() — one litellm.acompletion stream, any provider
   agent.py     # run_agent() facade + stream_turn/execute_tools primitives + ReactiveAgent

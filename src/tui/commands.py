@@ -47,6 +47,11 @@ def command(name: str, help: str) -> Callable[[Callable], Callable]:
     return deco
 
 
+def get_command_names() -> list[str]:
+    """Return sorted list of all registered command names."""
+    return sorted(_COMMANDS.keys())
+
+
 def dispatch(app: AgentApp, text: str) -> str | None:
     """Run ``text`` as a slash command, or return None if it isn't one.
 
@@ -134,3 +139,32 @@ def _cmd_usage(app: AgentApp, args: str) -> str:
     else:
         lines.append("  tokens: n/a (not reported by the provider)")
     return "\n".join(lines)
+
+
+@command("skill", "List installed skills, or /skill <name> to load one")
+def _cmd_skill(app: AgentApp, args: str) -> str:
+    """List all installed skills or load a specific skill's instructions.
+
+    With no argument: list all discovered skills with their descriptions.
+    With a skill name: load and display that skill's full instruction body.
+    """
+    from skills import discover_skills
+
+    skills = discover_skills()
+
+    if not args:
+        # List all available skills
+        if not skills:
+            return "No skills found. Add skills to .claude/skills/<name>/SKILL.md"
+        lines = ["Available skills:"]
+        for name in sorted(skills):
+            skill = skills[name]
+            lines.append(f"  {name} — {skill.description}")
+        return "\n".join(lines)
+
+    # Load a specific skill
+    skill = skills.get(args)
+    if skill is None:
+        return f"Skill not found: {args}\nRun /skill to list available skills."
+
+    return f"Loaded skill: {args}\n\n{skill.body}"

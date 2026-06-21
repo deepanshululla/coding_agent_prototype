@@ -342,11 +342,12 @@ class AgentApp(App):
                 f"image too large ({len(data)} > {config.IMAGE_MAX_BYTES} bytes)"
             )
             return
-        self._pending_images.append(
-            {"type": "image_url", "image_url": {"url": to_data_url(data, mime)}}
-        )
+        image_block = {"type": "image_url", "image_url": {"url": to_data_url(data, mime)}}
+        self._pending_images.append(image_block)
         n = len(self._pending_images)
-        self.query_one(TranscriptPane).append_user_text(f"\n[image {n} attached]\n")
+
+        # Display the image inline using the new append_user_message method
+        self.query_one(TranscriptPane).append_user_message([image_block])
         self.query_one(StatusBar).set_hint(f"image {n} attached — add a message and press Enter")
 
     def trigger_reload(self) -> None:
@@ -408,8 +409,15 @@ class AgentApp(App):
         msg = {"role": "user", "content": content}
         self._steering.put_nowait(msg)
         self._pending.append(msg)
-        # Echo the user message in the transcript so they can see it.
-        self.query_one(TranscriptPane).append_user_text(f"\n> {message.text}\n")
+        # Echo the user message in the transcript.
+        # If there were images attached, they were already shown when pasted (Ctrl+V).
+        # Now we show the text portion with a ">" prefix.
+        if isinstance(content, str):
+            # Plain text message
+            self.query_one(TranscriptPane).append_user_text(f"\n> {message.text}\n")
+        else:
+            # Multimodal message - just show the text part (images were already displayed)
+            self.query_one(TranscriptPane).append_user_text(f"\n> {message.text}\n")
         self.action_enter_normal()  # return to NORMAL after submitting
 
     def handle_agent_event(self, event: dict) -> None:

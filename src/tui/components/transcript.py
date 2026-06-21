@@ -82,6 +82,95 @@ class TranscriptPane(RichLog):
         color = self._theme.get("user", "bright_cyan")
         self.write(Text(text, style=color), expand=True, scroll_end=True)
 
+    def append_user_message(self, content: str | list[dict]) -> None:
+        """Echo a user message, handling both plain text and multimodal content.
+
+        Args:
+            content: Either a plain string, or a list of content blocks where each
+                     block is {"type": "text", "text": "..."} or
+                     {"type": "image_url", "image_url": {"url": "data:..."}}
+
+        For text blocks, displays the text with user styling.
+        For image blocks, displays a visual placeholder with image metadata.
+        """
+        from rich.text import Text
+
+        self._flush_pending()
+        user_color = self._theme.get("user", "bright_cyan")
+        muted = self._theme.get("status", "grey70")
+
+        # Handle plain text (backward compatibility)
+        if isinstance(content, str):
+            self.write(Text(content, style=user_color), expand=True, scroll_end=True)
+            return
+
+        # Handle multimodal content
+        for block in content:
+            block_type = block.get("type")
+
+            if block_type == "text":
+                text = block.get("text", "")
+                self.write(Text(text, style=user_color), expand=True, scroll_end=True)
+
+            elif block_type == "image_url":
+                # Extract image URL and parse metadata
+                image_url_obj = block.get("image_url", {})
+                url = image_url_obj.get("url", "")
+
+                # Parse data URL to extract format and size info
+                image_info = self._parse_image_url(url)
+
+                # Display a styled image placeholder
+                placeholder = Text()
+                placeholder.append("🖼️  ", style=user_color)
+                placeholder.append(
+                    f"[Image: {image_info['format']} • {image_info['size']}]", style=muted
+                )
+
+                self.write(placeholder, expand=True, scroll_end=True)
+
+    def _parse_image_url(self, url: str) -> dict[str, str]:
+        """Parse a data URL to extract image metadata.
+
+        Args:
+            url: A data URL like "data:image/png;base64,..."
+
+        Returns:
+            A dict with 'format' (e.g., 'PNG') and 'size' (e.g., '2.4 KB')
+        """
+        import base64
+
+        format_name = "unknown"
+        size_str = "unknown size"
+
+        try:
+            # Parse data URL format: data:image/png;base64,<data>
+            if url.startswith("data:"):
+                parts = url.split(",", 1)
+                if len(parts) == 2:
+                    header, data = parts
+                    # Extract MIME type
+                    if "image/" in header:
+                        mime = header.split(";")[0].replace("data:", "")
+                        format_name = mime.split("/")[-1].upper()
+
+                    # Decode base64 to get actual size
+                    try:
+                        decoded = base64.b64decode(data)
+                        size_bytes = len(decoded)
+                        if size_bytes < 1024:
+                            size_str = f"{size_bytes} B"
+                        elif size_bytes < 1024 * 1024:
+                            size_str = f"{size_bytes / 1024:.1f} KB"
+                        else:
+                            size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        return {"format": format_name, "size": size_str}
+
     def append_tool_call(self, name: str, tool_input: dict | None) -> None:
         """Render a tool call as a Claude-Code-style summary line in the transcript.
 
