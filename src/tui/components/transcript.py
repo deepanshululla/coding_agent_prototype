@@ -44,17 +44,41 @@ class TranscriptPane(RichLog):
         super().__init__(*args, **kwargs)
         self._theme = theme or {}
         self._current_turn_buffer = ""  # Accumulates deltas for the current turn
+        # The in-progress (not yet newline-terminated) line. Streamed deltas are
+        # accumulated here and only written once the line is complete, so a
+        # logical line lands on ONE RichLog row instead of fragmenting at delta
+        # boundaries ("...features R" then "ichLog supports...").
+        self._pending_line = ""
 
     def append_text(self, delta: str) -> None:
-        """Append a streamed text fragment. Called by the TUI renderer."""
+        """Append a streamed text fragment, keeping logical lines intact.
+
+        RichLog renders every write() as its own row, so writing each streamed
+        delta verbatim fragments a sentence wherever a chunk boundary fell ("R"
+        then "ichLog"). Instead we accumulate the open line and write only
+        *completed* lines (split on newline); the trailing open line is committed
+        at the next flush point (a tool/user echo or turn end). In-place editing
+        of a partial row isn't viable — RichLog defers rendering while the pane
+        is still unsized at startup, so a live partial can't be reliably removed.
+        """
         self._current_turn_buffer += delta
-        # Stream raw text for immediate feedback
-        self.write(delta, expand=True, scroll_end=True)
+        combined = self._pending_line + delta
+        # The last segment is the still-open line; everything before it is final.
+        *complete, self._pending_line = combined.split("\n")
+        for line in complete:
+            self.write(line, expand=True, scroll_end=True)
+
+    def _flush_pending(self) -> None:
+        """Commit the open line as a row (before a tool/user echo or turn end)."""
+        if self._pending_line:
+            self.write(self._pending_line, expand=True, scroll_end=True)
+            self._pending_line = ""
 
     def append_user_text(self, text: str) -> None:
         """Echo a submitted user message, styling it with the theme "user" color."""
         from rich.text import Text
 
+        self._flush_pending()
         color = self._theme.get("user", "bright_cyan")
         self.write(Text(text, style=color), expand=True, scroll_end=True)
 
@@ -71,6 +95,7 @@ class TranscriptPane(RichLog):
 
         from tui.tool_format import format_tool_call
 
+        self._flush_pending()  # finalize any open streamed line above the tool line
         disp = format_tool_call(name, tool_input)
         accent = self._theme.get("tool_name", "yellow")
         muted = self._theme.get("status", "grey70")
@@ -113,6 +138,7 @@ class TranscriptPane(RichLog):
         stays as streamed; see plans/2026-06-20-tui-markdown-rendering.md, whose
         "Actual Implementation" reached the same conclusion (no re-render).
         """
+        self._flush_pending()  # commit the last open line of the turn
         self._current_turn_buffer = ""
 
     def get_text(self) -> str:

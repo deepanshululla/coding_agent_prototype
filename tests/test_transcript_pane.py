@@ -61,12 +61,14 @@ def _pane_text(app: AgentApp) -> str:
 
 
 def test_append_text_renders_into_pane():
-    """A direct append_text() call lands its fragment in the pane's content."""
+    """A direct append_text() call lands its content in the pane. Streamed text
+    is line-buffered (committed on newline/turn end) so logical lines stay
+    intact, so the fragment carries a trailing newline to complete the line."""
 
     async def _run():
         app = AgentApp("noop")
         async with app.run_test() as pilot:
-            app.query_one(TranscriptPane).append_text("hello pane")
+            app.query_one(TranscriptPane).append_text("hello pane\n")
             await pilot.pause()
             assert "hello pane" in _pane_text(app)
 
