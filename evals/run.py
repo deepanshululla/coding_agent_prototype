@@ -47,6 +47,12 @@ def _load_coding() -> list[Task]:
     return CODING_SUITE
 
 
+def _load_vlm() -> list[Task]:
+    from evals.suites.vlm import VLM_SUITE
+
+    return VLM_SUITE
+
+
 def _load_planning() -> list[Task]:
     from evals.suites.planning import PLANNING_SUITE
 
@@ -87,6 +93,7 @@ SUITES: dict[str, Callable[[], list[Task]]] = {
     "reasoning": _load_reasoning,
     "planning": _load_planning,
     "coding": _load_coding,
+    "vlm": _load_vlm,
     "gsm8k": _load_gsm8k,
     "humaneval": _load_humaneval,
     "polyglot": _load_polyglot,

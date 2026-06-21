@@ -47,37 +47,27 @@ def _truncate(text: str, limit: int) -> str:
 async def read_file(path: str, offset: int = 0, limit: int = READ_LIMIT) -> str:
     """Read a file, optionally a window of ``limit`` lines starting at ``offset``.
 
-    Image files (detected by extension) are returned as a JSON string containing
-    base64-encoded data: {"type": "image", "format": "png", "data": "base64..."}.
-    Text files are returned as plain text.
+    Text files are returned as plain text. Image files (detected by extension)
+    are captioned in-tool when a vision model is configured (AGENT_VLM_MODEL):
+    the VLM describes the image and that description is returned as text, so a
+    non-vision driver model can act on screenshots and diagrams. With no VLM
+    configured the image is returned as a base64 JSON payload (legacy behaviour).
     """
+    p = Path(path)
 
-    def _read() -> str:
-        p = Path(path)
+    # Check if file exists first
+    try:
+        if not p.exists():
+            return f"Error: file not found: {path}"
+        if p.is_dir():
+            return f"Error: {path} is a directory, not a file"
+    except Exception as e:  # pragma: no cover - defensive
+        return f"Error checking {path}: {e}"
 
-        # Check if file exists first
-        try:
-            if not p.exists():
-                return f"Error: file not found: {path}"
-            if p.is_dir():
-                return f"Error: {path} is a directory, not a file"
-        except Exception as e:  # pragma: no cover - defensive
-            return f"Error checking {path}: {e}"
+    if p.suffix.lower() in IMAGE_EXTENSIONS:
+        return await _read_image(p)
 
-        # Image files: return base64-encoded JSON
-        if p.suffix.lower() in IMAGE_EXTENSIONS:
-            try:
-                img_bytes = p.read_bytes()
-                b64_data = base64.b64encode(img_bytes).decode("ascii")
-                # Strip the leading dot from suffix for format field
-                fmt = p.suffix.lower()[1:]  # .png -> png
-                return json.dumps(
-                    {"type": "image", "format": fmt, "data": b64_data}, separators=(",", ":")
-                )
-            except Exception as e:
-                return f"Error reading image {path}: {e}"
-
-        # Text files: return plain text (original behavior)
+    def _read_text() -> str:
         try:
             lines = p.read_text().splitlines()
         except FileNotFoundError:
@@ -90,7 +80,55 @@ async def read_file(path: str, offset: int = 0, limit: int = READ_LIMIT) -> str:
         window = lines[offset : offset + limit]
         return "\n".join(window)
 
-    return await asyncio.to_thread(_read)
+    return await asyncio.to_thread(_read_text)
+
+
+async def _read_image(p: Path) -> str:
+    """Return an image read result per AGENT_IMAGE_MODE (config read live).
+
+    raw     → base64 image payload; the provider lifts it so a vision MODEL sees
+              the whole image.
+    caption → a VLM description text only, for a non-vision driver MODEL.
+    both    → the image payload carrying the caption too (the default): MODEL sees
+              the whole image, and the caption rides along as the tool-result text.
+
+    "caption"/"both" need AGENT_VLM_MODEL; without it they degrade to raw (there is
+    no VLM to caption with).
+    """
+    try:
+        img_bytes = await asyncio.to_thread(p.read_bytes)
+    except Exception as e:
+        return f"Error reading image {p}: {e}"
+    fmt = p.suffix.lower()[1:]  # .png -> png
+
+    mode = config.IMAGE_MODE
+    caption: str | None = None
+    if config.VLM_MODEL and mode in ("caption", "both"):
+        # Lazy import: provider imports tools at module load, so a top-level
+        # import here would be circular.
+        from provider import describe_image
+
+        try:
+            description = await describe_image(img_bytes, fmt, config.VLM_MODEL)
+        except Exception as e:
+            return f"Error describing image {p} with {config.VLM_MODEL}: {e}"
+        caption = f"[image {p.name} — described by {config.VLM_MODEL}]\n{description}"
+
+    # caption-only mode: hand back just the text (no pixels for a non-vision model).
+    if mode == "caption" and caption is not None:
+        return caption
+
+    # raw / both: emit the image payload; the provider lifts it into a viewable
+    # block. In "both", the caption travels on the payload and becomes the
+    # tool-result text after lifting.
+    payload: dict[str, str] = {
+        "type": "image",
+        "format": fmt,
+        "data": base64.b64encode(img_bytes).decode("ascii"),
+    }
+    if caption is not None:
+        payload["caption"] = caption
+    return json.dumps(payload, separators=(",", ":"))
 
 
 # ── write_file ───────────────────────────────────────────────────────────────

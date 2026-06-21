@@ -11,7 +11,7 @@ from typing import Any
 import litellm
 
 import renderer
-from config import MAX_TOKENS, MODEL, THINKING_BUDGET, VLM_MODEL
+from config import MAX_TOKENS, MODEL, THINKING_BUDGET
 from tools import TOOLS_SCHEMA
 
 # Extended thinking (Phase 17) is only supported by some Claude models. We gate
@@ -114,13 +114,50 @@ def _tc(index, id=None, name=None, arguments=None):
     return SimpleNamespace(index=index, id=id, function=function)
 
 
-def _parse_image_payload(content: object) -> tuple[str, str] | None:
-    """Return (format, base64) if `content` is a read_file image result, else None.
+# describe_image captions an image with a vision model, used inside the read_file
+# tool (see tools._read_image). It is always called with NO tools attached, so the
+# VLM only describes — it never makes a tool call. Whether that caption is returned
+# alone, alongside the raw image, or not at all is decided by AGENT_IMAGE_MODE in
+# read_file; this helper just produces the description.
+_VLM_DESCRIBE_PROMPT = (
+    "Describe this image in detail for a software engineer who cannot see it. "
+    "Transcribe any visible text, code, or error messages verbatim, and note the "
+    "UI elements, diagrams, charts, colours, and layout that matter."
+)
 
-    `read_file` returns images as the JSON string
-    {"type":"image","format":"png","data":"<base64>"} (tools.py). A normal text
-    tool result is left alone by the cheap substring guard before we json.loads,
-    so this is effectively free on the common (text) path.
+
+async def describe_image(image_bytes: bytes, fmt: str, model: str) -> str:
+    """Caption an image with a vision model, with NO tools attached.
+
+    Builds a single multimodal user message (the image plus a description prompt)
+    and calls `model` without a tools array, so the VLM produces a description
+    rather than attempting a tool call. Returns the description text. Raises on a
+    transport/provider error so the caller (read_file) can report it.
+    """
+    import base64
+
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": _VLM_DESCRIBE_PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/{fmt};base64,{b64}"}},
+            ],
+        }
+    ]
+    response = await litellm.acompletion(model=model, messages=messages, stream=False)
+    return response.choices[0].message.content or ""
+
+
+def _parse_image_payload(content: object) -> tuple[str, str, str | None] | None:
+    """Return (format, base64, caption|None) if `content` is a read_file image
+    payload, else None.
+
+    read_file emits an image as the JSON string
+    {"type":"image","format":..,"data":..[,"caption":..]} (tools._read_image).
+    The cheap substring guard keeps ordinary text tool results off the json.loads
+    path, so this is effectively free on the common (text) path.
     """
     if not isinstance(content, str) or '"image"' not in content:
         return None
@@ -134,23 +171,23 @@ def _parse_image_payload(content: object) -> tuple[str, str] | None:
         and obj.get("format")
         and obj.get("data")
     ):
-        return obj["format"], obj["data"]
+        cap = obj.get("caption")
+        return obj["format"], obj["data"], (cap if isinstance(cap, str) and cap else None)
     return None
 
 
 def _lift_tool_image_results(messages: list[dict]) -> list[dict]:
-    """Lift image tool-results into a real multimodal `user` message.
+    """Make image tool-results viewable by the model.
 
-    A `role:"tool"` message is plain text to every provider, so the base64 an
-    image read returns is invisible to the model. We replace that base64 with a
-    short text placeholder and re-attach the image as an `image_url` block on a
+    A `role:"tool"` message is text-only on the wire, so the base64 an image read
+    returns is invisible. We replace it with the image's caption (when present) or
+    a short placeholder, and re-attach the image as an `image_url` block on a
     `user` message that follows the tool batch — the provider-agnostic shape
-    (OpenAI/Anthropic/Ollama all accept image_url in user content).
-
-    All images from one contiguous tool batch are collected into a single trailing
-    user message so the tool_result grouping providers require (every result for
-    an assistant's tool_use before the next user turn) is preserved. Non-image
-    tool results and the input list itself are untouched (a fresh list is built).
+    (OpenAI / Anthropic / Ollama all accept image_url in user content). All images
+    in one contiguous tool batch are collected into a single trailing user message
+    so the tool_result grouping providers require (every result for an assistant's
+    tool_use before the next user turn) is preserved. Non-image results and the
+    input list itself are untouched — a fresh list is built.
     """
     out: list[dict] = []
     pending: list[dict] = []
@@ -170,11 +207,15 @@ def _lift_tool_image_results(messages: list[dict]) -> list[dict]:
 
     for msg in messages:
         if msg.get("role") == "tool":
-            img = _parse_image_payload(msg.get("content"))
-            if img is not None:
-                fmt, data = img
-                placeholder = f"[image read ({fmt}); attached in the next message]"
-                out.append({**msg, "content": placeholder})
+            parsed = _parse_image_payload(msg.get("content"))
+            if parsed is not None:
+                fmt, data, caption = parsed
+                out.append(
+                    {
+                        **msg,
+                        "content": caption or f"[image read ({fmt}); attached in the next message]",
+                    }
+                )
                 pending.append(
                     {"type": "image_url", "image_url": {"url": f"data:image/{fmt};base64,{data}"}}
                 )
@@ -187,21 +228,6 @@ def _lift_tool_image_results(messages: list[dict]) -> list[dict]:
 
     _flush()
     return out
-
-
-def _contains_image(messages: list[dict]) -> bool:
-    """True if any message carries a multimodal image_url block.
-
-    Used to decide vision routing. Run on the lifted messages so it catches both
-    pasted user images and images lifted out of tool results.
-    """
-    for msg in messages:
-        content = msg.get("content")
-        if isinstance(content, list) and any(
-            isinstance(b, dict) and b.get("type") == "image_url" for b in content
-        ):
-            return True
-    return False
 
 
 async def stream_response(
@@ -224,15 +250,12 @@ async def stream_response(
     skipped entirely and the turn is served by `claude -p` via _claude_cli_stream
     — a text-only fork that still yields the same OpenAI-format chunk shape.
     """
-    # Lift image tool-results into real multimodal user messages so the model can
-    # see them (a tool result is text-only on the wire), then route the turn: a
-    # turn carrying an image goes to VLM_MODEL when configured, otherwise to the
-    # caller's model (or the default MODEL). Text turns are unchanged.
+    effective_model = model or MODEL
+
+    # Lift image tool-results into viewable multimodal blocks so MODEL sees the
+    # whole image (a tool result is text-only on the wire). Any caption read_file
+    # attached becomes the tool-result text. Non-image turns pass through unchanged.
     lifted = _lift_tool_image_results(messages)
-    if VLM_MODEL and _contains_image(lifted):
-        effective_model = VLM_MODEL
-    else:
-        effective_model = model or MODEL
 
     if USE_CLAUDE_CLI:
         async for chunk in _claude_cli_stream(lifted, system_prompt, effective_model):

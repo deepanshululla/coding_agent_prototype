@@ -48,14 +48,27 @@ MAX_TOKENS = _int("AGENT_MAX_TOKENS", 8096)
 # e.g. AGENT_MODEL=ollama/gpt-oss:120b + AGENT_CODE_MODEL=ollama/qwen3-coder:30b.
 CODE_MODEL = os.environ.get("AGENT_CODE_MODEL", "")
 
-# Vision role routing. When set, any turn that carries an image — a pasted
-# user image or an image read by the `read_file` tool — is routed to this
-# vision-language model instead of MODEL, while MODEL keeps driving every
-# text-only turn. Empty (the default) disables routing: images go to MODEL
-# unchanged, so a single vision-capable MODEL still works. Lets a text/tool
-# model (e.g. qwen3-coder, gpt-oss) drive the loop while a VLM handles images,
-# e.g. AGENT_MODEL=ollama/qwen3-coder:30b + AGENT_VLM_MODEL=ollama/qwen3-vl:30b.
+# Vision captioning model. When set, the `read_file` tool describes any image it
+# reads by calling this vision model *inside the tool* — with no tools attached,
+# so the VLM only sees, it never makes tool calls — and returns the description as
+# text. This lets a non-vision driver model (e.g. qwen3-coder, gpt-oss) act on
+# screenshots and diagrams. Empty (the default) returns the image as base64 JSON,
+# unchanged. Reached like CODE_MODEL — a sub-model used within a tool, e.g.
+# AGENT_MODEL=ollama/qwen3-coder:30b + AGENT_VLM_MODEL=ollama/qwen3-vl:30b.
 VLM_MODEL = os.environ.get("AGENT_VLM_MODEL", "")
+
+# How the read_file tool hands an image to the model:
+#   "both"    (default) — the whole image (so a vision-capable MODEL sees every
+#                         pixel) AND, when AGENT_VLM_MODEL is set, a VLM caption
+#                         as the tool's text. Best of both; degrades to "raw"
+#                         when no VLM is configured.
+#   "raw"               — the whole image only, no VLM call.
+#   "caption"           — a VLM description only, no raw image — for a non-vision
+#                         driver MODEL that cannot accept pixels.
+# "caption"/"both" need AGENT_VLM_MODEL; without it they fall back to raw. Note a
+# raw image sent to a non-vision MODEL can error at the provider, so pick
+# "caption" when MODEL itself cannot see images.
+IMAGE_MODE = os.environ.get("AGENT_IMAGE_MODE", "both")
 
 # ── Architecture ──────────────────────────────────────────────────────────────
 # The agent control-flow strategy (see architecture.py). Overridable per-run via

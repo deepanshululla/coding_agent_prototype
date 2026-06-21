@@ -36,6 +36,7 @@ Each ADR has a **status**:
 | [ADR-0013](#adr-0013--command-allowlist-is-default-deny) | Command allowlist is default-deny | Accepted |
 | [ADR-0014](#adr-0014--defer-the-http-serving-layer-fastapi--granian) | Defer the HTTP serving layer (FastAPI + Granian) | Deferred |
 | [ADR-0015](#adr-0015--one-model-per-loop-defer-dual-model-role-routing) | One model per loop; defer dual-model role routing | Deferred |
+| [ADR-0016](#adr-0016--images-reach-the-model-whole-vlm-captioning-is-an-in-tool-option) | Images reach the model whole; VLM captioning is an in-tool option | Accepted |
 
 ---
 
@@ -441,6 +442,63 @@ wiring, and prompt guidance so the driver delegates instead of editing directly.
   unwanted.
 - **Single model only** — `tui:ollama` on one model. *Pros:* trivial, ships now. *Cons:* no split at
   all. Chosen as the immediate step, not the end state.
+
+---
+
+## ADR-0016 — Images reach the model whole; VLM captioning is an in-tool option
+
+**Status:** Accepted (2026-06-21).
+
+### Context
+
+`read_file` on an image returned base64 as a JSON string in a `role:"tool"` message. But a tool
+result is **plain text** to every provider (the OpenAI / LiteLLM contract carries images only as
+*user-message* content blocks), so that base64 was invisible — the model never actually saw the
+image ([ADR-0004](#adr-0004--tools-return-error-strings-never-raise) and the
+[Tool Call Lifecycle](./concepts/tool-call-lifecycle.md)). Two needs pull in different directions:
+a **vision-capable** `MODEL` should see the *whole* image (pixels, not a lossy summary), while a
+**non-vision** driver (e.g. `qwen3-coder`) can't accept pixels at all and needs text. A tempting
+fix — route the entire image turn to a separate vision model — was built and then **reverted**: it
+hands the VLM the tool schema, and `qwen3-vl` then tries to *make tool calls* instead of describing
+(observed live). It also diverges from the
+[ADR-0015](#adr-0015--one-model-per-loop-defer-dual-model-role-routing) pattern, where a sub-model
+is reached *inside a tool*, not by re-routing the turn.
+
+### Decision
+
+**Deliver the image whole by lifting, and make VLM captioning an in-tool option.**
+
+- **Lift (default path):** in `stream_response`, `_lift_tool_image_results` rewrites an image
+  tool-result into a viewable `image_url` block on a following `user` message — provider-agnostic
+  (OpenAI / Anthropic / Ollama all accept it), non-mutating, and preserving the tool_result grouping
+  by batching a tool batch's images into one trailing user message. `MODEL` keeps driving with its
+  tools; it simply now *sees* the image.
+- **Caption (in-tool option):** `read_file` may call a `CODE_MODEL`-style `AGENT_VLM_MODEL`
+  (`provider.describe_image`) with **no tools attached**, so the VLM only describes — it never acts.
+- **One switch:** `AGENT_IMAGE_MODE` ∈ `raw` | `caption` | `both`, **default `both`**. `both` sends
+  the whole image *and* (when a VLM is set) the caption as the tool-result text; `caption` sends text
+  only (for a non-vision driver); `raw` sends the image only. `caption`/`both` need `AGENT_VLM_MODEL`
+  and otherwise **degrade to `raw`**. See [Vision & Images](./customization/vision-and-images.md).
+
+### Consequences
+
+**Positive:** a vision `MODEL` sees every pixel through one small, non-mutating provider seam; a
+non-vision driver can still act via the caption; the VLM, reached inside the tool and never given
+tools, can't be derailed into tool-calling; the design matches ADR-0015's in-tool sub-model pattern;
+default `both` "just works" — whole image with no VLM, image+caption once one is configured.
+**Costs:** captioning adds a blocking VLM round-trip plus tokens and is lossy; sending `raw`/`both`
+to a **non-vision** `MODEL` can *error* at the provider, so a text-only driver must use `caption`;
+LiteLLM's Ollama image path requires **Pillow** (now a dependency).
+
+### Alternatives considered
+
+- **Turn-level routing to a VLM** (built, then reverted) — route the whole image turn to
+  `AGENT_VLM_MODEL`. *Cons:* the VLM receives the tool schema and emits tool calls instead of
+  describing (seen live with `qwen3-vl`); diverges from ADR-0015. Rejected.
+- **Base64 in the tool-result text** (the original behaviour) — not a real multimodal round-trip; the
+  model can't see it. This is the bug being fixed.
+- **Caption-only, always** — simple, works for non-vision drivers, but throws away a vision `MODEL`'s
+  ability to read the real pixels and is lossy. Kept as the `caption` mode, not the default.
 
 ---
 
