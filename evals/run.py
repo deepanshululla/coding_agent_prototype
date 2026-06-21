@@ -232,12 +232,28 @@ def _resolve_models(args) -> list[str] | None:
 #: Where the HTML report goes when --html isn't given (it's on by default).
 DEFAULT_HTML = "eval-report.html"
 
+#: Default JSONL history: every run auto-appends here (gitignored) so results
+#: accumulate over time and the report's trend charts fill in. --no-out opts out.
+DEFAULT_OUT = "evals/runs.jsonl"
+
 
 def _html_target(args) -> str | None:
     """Resolve the HTML report path: --html wins, else the default, unless --no-html."""
     if args.no_html:
         return None
     return args.html or DEFAULT_HTML
+
+
+def _out_target(args) -> str | None:
+    """Resolve the JSONL history path: --out wins, else the default, unless --no-out.
+
+    Defaulting to :data:`DEFAULT_OUT` means runs accumulate automatically; each
+    record carries this run's timestamp (see ``main``), so one invocation is one
+    point per model in the trend charts.
+    """
+    if args.no_out:
+        return None
+    return args.out or DEFAULT_OUT
 
 
 def _emit_html(html_path: str, out_path: str | None, records: list[dict]) -> None:
@@ -251,40 +267,41 @@ def _emit_html(html_path: str, out_path: str | None, records: list[dict]) -> Non
     print(f"\nHTML report written to {html_path} ({len(records)} results)")
 
 
-def _records_for(results: list[EvalResult], model: str | None) -> list[dict]:
-    """Flatten this run's results into JSONL-shaped records (for HTML without --out)."""
+def _records_for(results: list[EvalResult], model: str | None, ts: str) -> list[dict]:
+    """Flatten this run's results into JSONL-shaped records, stamped with ``ts``."""
     from evals.results import result_to_record
 
-    ts = datetime.now().isoformat()
     return [result_to_record(r, model=model, timestamp=ts) for r in results]
 
 
-def _run_comparison(args, tasks: list[Task], models: list[str]) -> int:
+def _run_comparison(args, tasks: list[Task], models: list[str], run_ts: str) -> int:
     """Run the suite once per model and print a comparison matrix.
 
     Returns 0 iff every model passed every task — so a comparison run is still a
-    usable CI gate. Each model's per-task results are persisted when ``--out`` is
-    set, tagged with that model.
+    usable CI gate. Every model's results are persisted (to the resolved --out
+    path) and tagged with the same ``run_ts``, so one comparison is one point per
+    model in the trend charts.
     """
     if not models:
         print("No models to compare (none given / none discovered).", file=sys.stderr)
         return 2
 
+    out_path = _out_target(args)
     by_model: dict[str, list[EvalResult]] = {}
     for model in models:
         print(f"\n=== {model} — suite '{args.suite}' ({len(tasks)} tasks) ===")
         results = asyncio.run(run_suite(tasks, model=model))
         by_model[model] = results
-        if args.out:
-            append_run(args.out, results, model=model, timestamp=datetime.now().isoformat())
+        if out_path:
+            append_run(Path(out_path), results, model=model, timestamp=run_ts)
 
     print("\n" + format_comparison(by_model))
-    if args.out:
-        print(f"\nResults appended to {args.out}")
+    if out_path:
+        print(f"\nResults appended to {out_path}")
     html_target = _html_target(args)
     if html_target:
-        flat = [rec for m, rs in by_model.items() for rec in _records_for(rs, m)]
-        _emit_html(html_target, args.out, flat)
+        flat = [rec for m, rs in by_model.items() for rec in _records_for(rs, m, run_ts)]
+        _emit_html(html_target, out_path, flat)
     return 0 if all(r.passed for rs in by_model.values() for r in rs) else 1
 
 
@@ -303,7 +320,12 @@ def main(argv: list[str] | None = None) -> int:
         help="compare across every chat-capable model discovered in local Ollama",
     )
     parser.add_argument("--limit", type=int, default=None, help="run only the first N tasks")
-    parser.add_argument("--out", default=None, help="append results as JSONL to this file")
+    parser.add_argument(
+        "--out",
+        default=None,
+        help=f"append results as JSONL to this file (default: {DEFAULT_OUT})",
+    )
+    parser.add_argument("--no-out", action="store_true", help="do not append to the JSONL history")
     parser.add_argument(
         "--html",
         default=None,
@@ -337,24 +359,29 @@ def main(argv: list[str] | None = None) -> int:
     if not args.verbose:
         _silence_transcript()
 
+    # One timestamp for the whole invocation, so all of a run's records share it
+    # (one point per model in the trend charts).
+    run_ts = datetime.now().isoformat()
+
     # Resolve the model list: --ollama-all discovers them, --models is an explicit
     # comma list, and either triggers the multi-model comparison path. A bare
     # --model (or nothing) keeps the original single-run behaviour.
     models = _resolve_models(args)
     if models is not None:
-        return _run_comparison(args, tasks, models)
+        return _run_comparison(args, tasks, models, run_ts)
 
     print(f"Running suite '{args.suite}' ({len(tasks)} tasks)...\n")
     results = asyncio.run(run_suite(tasks, model=args.model))
     print("\n" + format_report(results))
 
-    if args.out:
-        append_run(args.out, results, model=args.model, timestamp=datetime.now().isoformat())
-        print(f"\nResults appended to {args.out}")
+    out_path = _out_target(args)
+    if out_path:
+        append_run(Path(out_path), results, model=args.model, timestamp=run_ts)
+        print(f"\nResults appended to {out_path}")
 
     html_target = _html_target(args)
     if html_target:
-        _emit_html(html_target, args.out, _records_for(results, args.model))
+        _emit_html(html_target, out_path, _records_for(results, args.model, run_ts))
 
     predictions_path = args.predictions or ("predictions.jsonl" if args.grade else None)
     if predictions_path:

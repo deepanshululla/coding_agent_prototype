@@ -143,6 +143,24 @@ tasks:
     cmds:
       - uv run python -m evals.run humaneval --ollama-all {{.CLI_ARGS}}
 
+  eval:report:
+    desc: >-
+      Regenerate the HTML report (eval-report.html) from the accumulated run
+      history in evals/runs.jsonl, then open it. Eval runs append there by
+      default, so this rebuilds the leaderboard + trend charts on demand.
+      Override paths with `task eval:report IN=other.jsonl OUT=other.html`, or set
+      a title with `-- --title "My Evals"`.
+    vars:
+      IN: '{{.IN | default "evals/runs.jsonl"}}'
+      OUT: '{{.OUT | default "eval-report.html"}}'
+    env:
+      PYTHONPATH: src
+    cmds:
+      - uv run python -m evals.report_html --in {{.IN}} --out {{.OUT}} {{.CLI_ARGS}}
+      - cmd: open {{.OUT}}
+        platforms: [darwin]
+        ignore_error: true
+
   docs:install:
     desc: Install the documentation site's npm dependencies
     dir: "{{.WEBSITE_DIR}}"

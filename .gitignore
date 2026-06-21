@@ -28,3 +28,7 @@ evals/.cache/
 
 # Default eval HTML report
 eval-report.html
+
+# Local eval run history (not committed)
+evals/runs.jsonl
+eval-report.html

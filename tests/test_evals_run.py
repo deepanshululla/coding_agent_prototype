@@ -5,10 +5,27 @@ the parts worth testing are the suite registry and the report formatting, both
 of which are pure and deterministic.
 """
 
+from argparse import Namespace
+
 import pytest
 
 from evals.harness import EvalResult
-from evals.run import format_report, get_suite
+from evals.run import DEFAULT_OUT, _out_target, format_report, get_suite
+
+
+def test_out_target_defaults_to_accumulating_runs_file():
+    # No flags: every run auto-appends to the default history file.
+    assert _out_target(Namespace(out=None, no_out=False)) == DEFAULT_OUT
+    assert DEFAULT_OUT == "evals/runs.jsonl"
+
+
+def test_out_target_explicit_path_wins():
+    assert _out_target(Namespace(out="custom.jsonl", no_out=False)) == "custom.jsonl"
+
+
+def test_out_target_no_out_disables_persistence():
+    assert _out_target(Namespace(out=None, no_out=True)) is None
+    assert _out_target(Namespace(out="x.jsonl", no_out=True)) is None
 
 
 def test_get_suite_returns_known_suite():

@@ -70,8 +70,46 @@ On first run, `ensure_polyglot_repo()` sparse-clones the benchmark into `evals/.
 Only **Python** is wired up so far. Other languages slot in by adding an entry to the `_LANGUAGES` spec dict in `evals/suites/polyglot.py` with that language's test command (via `command_grader`) and file conventions — gated on having that toolchain installed in the run environment.
 :::
 
+## Answer-graded suites: `reasoning` and `planning`
+
+Two suites grade the model's **final answer** rather than the workdir, so they
+isolate a single capability from tool mechanics (a weak tool-caller isn't
+penalised). The harness captures the closing assistant message and hands it to an
+*answer-grader* (marked `wants_answer=True`); see [the harness](./the-harness.md).
+
+| Suite | Tests | Grader |
+|---|---|---|
+| `reasoning` | Multi-step math / logic word problems with one deterministic answer | `exact_answer` (normalised last-line / last-token match) |
+| `planning` | Produce a valid ordered plan under dependency constraints | `valid_ordering` (accepts *any* valid topological order) |
+
+`planning` ships 6 themed tasks plus a **seeded generator** (`generate_planning_tasks`)
+that emits deterministic random-DAG ordering problems — same tasks every run, so
+scores stay comparable. Because they need no tools, both suites also run on
+tool-less models (e.g. `gemma3`) via the provider's no-tools fallback.
+
+## `coding` and the standard datasets
+
+| Suite | What | Source | Grader |
+|---|---|---|---|
+| `coding` | HumanEval-flavoured standalone functions + hidden tests | local | `pytest_grader` |
+| `gsm8k` | ~1,300 grade-school math word problems | fetched on demand | `exact_answer` |
+| `humaneval` | 164 function-completion problems | fetched on demand | `pytest_grader` |
+
+`gsm8k` and `humaneval` mirror the `polyglot` pattern — a pure builder plus an
+on-demand fetch that caches into `evals/.cache/` (gitignored), so naming the suite
+downloads its data only when requested. They give the **large N** needed to compare
+models reliably; always pass `--limit` to subsample for a quick pass.
+
+```bash
+uv run python -m evals.run gsm8k --limit 30 --ollama-all
+uv run python -m evals.run humaneval --limit 5 --model ollama_chat/gemma4:31b
+```
+
+See [Model Results](./model-results.md) for measured numbers across local models.
+
 ## Related pages
 
 - [The harness](./the-harness.md) — how a `Task` and grader fit together
 - [SWE-bench Lite](./swebench-lite.md) — the heavier, real-world suite
 - [Comparing models](./comparing-models.md) — running a suite across many models
+- [Model Results](./model-results.md) — measured results across local models
