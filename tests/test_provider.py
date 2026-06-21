@@ -390,3 +390,50 @@ def test_messages_to_prompt_plain_string_unchanged():
     prompt = provider._messages_to_prompt("sys", [{"role": "user", "content": "hello"}])
     assert "User: hello" in prompt
     assert "System: sys" in prompt
+
+
+# ── _claude_cli_stream: large stream-json lines must not overflow readline ────
+
+
+@pytest.mark.integration
+async def test_cli_stream_reader_handles_lines_over_64kb():
+    """A single stream-json line can exceed asyncio's default 64KB readline cap.
+
+    `claude -p` echoes the image it read back as a base64 block, so one NDJSON
+    line routinely runs past 64KB (and far larger with our 5MB image cap). The
+    default StreamReader limit makes readline() raise LimitOverrunError mid-turn,
+    crashing the run. _claude_cli_stream must spawn the subprocess with a raised
+    `limit` so such lines stream through intact.
+
+    BDD: Given a subprocess emitting a single line well over 64KB, When it is read
+    with provider._CLI_STREAM_LIMIT, Then the whole line arrives without error;
+    And the asyncio default would have raised, proving the cap is the fix.
+    """
+    import asyncio
+
+    big = 200_000  # comfortably over the 65_536-byte default
+
+    # The default limit must actually fail on this line (guards the test's point).
+    proc = await asyncio.create_subprocess_exec(
+        "python3",
+        "-c",
+        f"print('A' * {big})",
+        stdout=asyncio.subprocess.PIPE,
+    )
+    assert proc.stdout is not None
+    with pytest.raises(ValueError):
+        await proc.stdout.readline()
+    await proc.wait()
+
+    # The provider's raised limit must read the whole line cleanly.
+    proc = await asyncio.create_subprocess_exec(
+        "python3",
+        "-c",
+        f"print('A' * {big})",
+        stdout=asyncio.subprocess.PIPE,
+        limit=provider._CLI_STREAM_LIMIT,
+    )
+    assert proc.stdout is not None
+    line = await proc.stdout.readline()
+    await proc.wait()
+    assert len(line.strip()) == big

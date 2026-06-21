@@ -67,6 +67,13 @@ USE_CLAUDE_CLI = os.environ.get("USE_CLAUDE_CLI_LLM", "") == "1"
 # override with CLAUDE_CLI_PERMISSION_MODE (e.g. acceptEdits) for a stricter run.
 CLI_PERMISSION_MODE = os.environ.get("CLAUDE_CLI_PERMISSION_MODE", "bypassPermissions")
 
+# Max bytes a single `claude -p` stream-json NDJSON line may reach before the
+# asyncio StreamReader errors. The default (64KB) overflows on image turns — the
+# CLI echoes the read image as a base64 block on one line — so we raise it to
+# 64MB, comfortably above a base64-expanded 5MB image (IMAGE_MAX_BYTES) plus the
+# surrounding JSON. It is a ceiling, not a preallocation.
+_CLI_STREAM_LIMIT = 64 * 1024 * 1024
+
 
 def _chunk(
     content=None, finish_reason=None, tool_calls=None, thinking=None, signature=None, usage=None
@@ -435,6 +442,12 @@ async def _claude_cli_stream(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Raise the StreamReader buffer well past asyncio's 64KB default: a
+            # single stream-json line can be much larger (claude -p echoes the
+            # image it read back as a base64 block, and our image cap is 5MB →
+            # ~7MB once base64-expanded). The default makes readline() raise
+            # LimitOverrunError mid-turn; _CLI_STREAM_LIMIT gives ample headroom.
+            limit=_CLI_STREAM_LIMIT,
         )
 
         # stdout is typed Optional, but PIPE above guarantees a reader here.
