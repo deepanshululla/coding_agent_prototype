@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eval Results</title>
+  <style>
+:root { color-scheme: light dark; }
+body { font: 14px/1.5 -apple-system, system-ui, sans-serif; margin: 0; padding: 2rem;
+       background: #0f1115; color: #e6e6e6; }
+h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+.sub { color: #8a93a2; margin-bottom: 1.5rem; }
+.cards { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+.card { background: #1a1d24; border: 1px solid #2a2f3a; border-radius: 10px;
+        padding: 1rem 1.25rem; min-width: 120px; }
+.card .num { font-size: 1.6rem; font-weight: 600; }
+.card .lbl { color: #8a93a2; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid #2a2f3a; }
+th { color: #8a93a2; font-weight: 600; text-transform: uppercase;
+     font-size: .72rem; letter-spacing: .04em; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+td.dim { color: #8a93a2; }
+tr:hover td { background: #161922; }
+.badge { padding: .1rem .5rem; border-radius: 5px; font-weight: 700; font-size: .72rem; }
+.badge.pass { background: #143d2a; color: #46d68a; }
+.badge.fail { background: #3d1717; color: #ff6b6b; }
+.bar { position: relative; background: #2a2f3a; border-radius: 5px;
+       height: 18px; width: 160px; overflow: hidden; }
+.bar .fill { height: 100%; }
+.bar span { position: absolute; inset: 0; text-align: center;
+            font-size: .72rem; line-height: 18px; }
+.charts { display: flex; gap: 1rem; flex-wrap: wrap; }
+.chart { background: #1a1d24; border: 1px solid #2a2f3a; border-radius: 10px;
+         padding: .5rem; flex: 1 1 340px; max-width: 100%; }
+.chart .ctitle { fill: #e6e6e6; font-size: 13px; font-weight: 600; }
+.chart .grid { stroke: #2a2f3a; stroke-width: 1; }
+.chart .ylab, .chart .leg { fill: #8a93a2; font-size: 10px; }
+.chart .ylab { text-anchor: end; }
+</style>
+</head>
+<body>
+  <h1>Eval Results</h1>
+  <div class="sub">3 results</div>
+  <div class="cards"><div class="card"><div class="num">100%</div><div class="lbl">Pass rate</div></div><div class="card"><div class="num">3/3</div><div class="lbl">Passed</div></div><div class="card"><div class="num">1</div><div class="lbl">Runs</div></div><div class="card"><div class="num">1</div><div class="lbl">Models</div></div><div class="card"><div class="num">10,028</div><div class="lbl">Tokens</div></div></div>
+  <h2>Trends</h2>
+  <div class="charts"><svg class="chart" viewBox="0 0 720 240" role="img" aria-label="Pass rate over time"><text class="ctitle" x="48" y="16">Pass rate over time</text><line class="grid" x1="48" y1="218.0" x2="708" y2="218.0"/><text class="ylab" x="42" y="221.0">0%</text><line class="grid" x1="48" y1="170.5" x2="708" y2="170.5"/><text class="ylab" x="42" y="173.5">25%</text><line class="grid" x1="48" y1="123.0" x2="708" y2="123.0"/><text class="ylab" x="42" y="126.0">50%</text><line class="grid" x1="48" y1="75.5" x2="708" y2="75.5"/><text class="ylab" x="42" y="78.5">75%</text><line class="grid" x1="48" y1="28.0" x2="708" y2="28.0"/><text class="ylab" x="42" y="31.0">100%</text><polyline fill="none" stroke="#46d68a" stroke-width="2" points="378.0,28.0"/><circle cx="378.0" cy="28.0" r="3" fill="#46d68a"/><rect x="48" y="228" width="9" height="9" fill="#46d68a"/><text class="leg" x="61" y="236">ollama_chat/gpt-oss:20b</text></svg><svg class="chart" viewBox="0 0 720 240" role="img" aria-label="Tokens per run over time"><text class="ctitle" x="48" y="16">Tokens per run over time</text><line class="grid" x1="48" y1="218.0" x2="708" y2="218.0"/><text class="ylab" x="42" y="221.0">0</text><line class="grid" x1="48" y1="170.5" x2="708" y2="170.5"/><text class="ylab" x="42" y="173.5">3k</text><line class="grid" x1="48" y1="123.0" x2="708" y2="123.0"/><text class="ylab" x="42" y="126.0">5k</text><line class="grid" x1="48" y1="75.5" x2="708" y2="75.5"/><text class="ylab" x="42" y="78.5">8k</text><line class="grid" x1="48" y1="28.0" x2="708" y2="28.0"/><text class="ylab" x="42" y="31.0">10k</text><polyline fill="none" stroke="#46d68a" stroke-width="2" points="378.0,28.0"/><circle cx="378.0" cy="28.0" r="3" fill="#46d68a"/><rect x="48" y="228" width="9" height="9" fill="#46d68a"/><text class="leg" x="61" y="236">ollama_chat/gpt-oss:20b</text></svg></div>
+  <h2>Models</h2>
+  <table>
+    <thead><tr><th>Model</th><th>Pass rate</th><th class='r'>Passed</th>
+      <th class='r'>Calls</th><th class='r'>Errors</th><th class='r'>Unknown</th>
+      <th class='r'>Tokens</th><th class='r'>Time</th></tr></thead>
+    <tbody>
+<tr><td>ollama_chat/gpt-oss:20b</td><td><div class="bar"><div class="fill" style="width:100%;background:hsl(120,65%,45%)"></div><span>100%</span></div></td><td class='r'>3/3</td><td class='r'>4</td><td class='r'>0</td><td class='r'>0</td><td class='r'>10,028</td><td class='r'>336.0s</td></tr>
+    </tbody>
+  </table>
+  <h2>All results</h2>
+  <table>
+    <thead><tr><th>When</th><th>Model</th><th>Task</th><th>Result</th>
+      <th class='r'>Iter</th><th class='r'>Calls</th><th class='r'>Err</th>
+      <th class='r'>Unk</th><th class='r'>Tokens</th><th class='r'>Time</th>
+      <th>Detail</th></tr></thead>
+    <tbody>
+<tr><td class='dim'>2026-06-21T12:53:29.195094</td><td>ollama_chat/gpt-oss:20b</td><td>vlm-color</td><td><span class='badge pass'>PASS</span></td><td class='r'>3</td><td class='r'>2</td><td class='r'>0</td><td class='r'>0</td><td class='r'>4,192</td><td class='r'>85.8s</td><td class='dim'>answer contains &#x27;red&#x27;</td></tr>
+<tr><td class='dim'>2026-06-21T12:53:29.195094</td><td>ollama_chat/gpt-oss:20b</td><td>vlm-ocr</td><td><span class='badge pass'>PASS</span></td><td class='r'>2</td><td class='r'>1</td><td class='r'>0</td><td class='r'>0</td><td class='r'>2,899</td><td class='r'>185.7s</td><td class='dim'>answer contains &#x27;DEPLOY FAILED&#x27;</td></tr>
+<tr><td class='dim'>2026-06-21T12:53:29.195094</td><td>ollama_chat/gpt-oss:20b</td><td>vlm-spatial</td><td><span class='badge pass'>PASS</span></td><td class='r'>2</td><td class='r'>1</td><td class='r'>0</td><td class='r'>0</td><td class='r'>2,937</td><td class='r'>64.6s</td><td class='dim'>answer contains &#x27;blue&#x27;</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>
